@@ -43,11 +43,11 @@ module Marshal = struct
     Cstruct.BE.set_uint16 ph 10 len;
     ph
 
-  let unsafe_fill ~payload_len t buf =
-    let nearest_4 n = match n mod 4 with
-      | 0 -> n
-      | k -> (4 - k) + n
-    in
+  let nearest_4 n = match n mod 4 with
+    | 0 -> n
+    | k -> (4 - k) + n
+
+  let unsafe_fill_mirage ~payload_len t buf =
     let options_len = nearest_4 @@ Cstruct.len t.options in
     set_ipv4_hlen_version buf ((4 lsl 4) + 5 + (options_len / 4));
     set_ipv4_ttl buf t.ttl;
@@ -59,12 +59,50 @@ module Marshal = struct
     let checksum = Tcpip_checksum.ones_complement @@ Cstruct.sub buf 0 (20 + options_len) in
     set_ipv4_csum buf checksum
 
+    let fiat_ipv4_encode = FiatUtils.make_encoder Fiat4Mirage.fiat_ipv4_encode
+
+  let protocol_to_fiat_protocol = function
+    | 1  -> Fiat4Mirage.ICMP
+    | 6  -> Fiat4Mirage.TCP
+    | 17 -> Fiat4Mirage.UDP
+    | _  -> failwith "Unrecognized protocol"
+
+  let fill_fiat ~payload_len t buf =
+    let options_len = nearest_4 @@ Cstruct.len t.options in
+    let fiat_options_from_buf buf =
+      (* Fiat wants parsed options, but Mirage keeps them raw *)
+      if Cstruct.len buf <> nearest_4 (Cstruct.len buf) then
+        failwith "Unexpected option length";
+      let options = ref [] in
+      for off = 0 to (Cstruct.len buf / 4) - 1 do
+        options := Int64.of_int32 (Cstruct.BE.get_uint32 buf (4 * off)) :: !options
+      done;
+      List.rev !options in
+    let fiat_packet = Fiat4Mirage.{
+          totalLength = Int64.of_int (sizeof_ipv4 + options_len + payload_len);
+          (* Mirage doesn't support the following 4 fields: *)
+          iD = Int64.zero;
+          dF = false;
+          mF = false;
+          fragmentOffset = Int64.zero;
+          (* </> *)
+          tTL = Int64.of_int t.ttl;
+          protocol = Fiat4Mirage.fiat_ipv4_protocol_to_enum (protocol_to_fiat_protocol t.proto);
+          sourceAddress = Int64.of_int32 (Ipaddr.V4.to_int32 t.src);
+          destAddress = Int64.of_int32 (Ipaddr.V4.to_int32 t.dst);
+          options = fiat_options_from_buf t.options } in
+    fiat_ipv4_encode fiat_packet buf
+
+  let fill ~payload_len t buf =
+    if !FiatUtils.ipv4_encoding_uses_fiat then fill_fiat ~payload_len t buf
+    else Result.Ok (unsafe_fill_mirage ~payload_len t buf)
 
   let into_cstruct ~payload_len t buf =
     if Cstruct.len buf < (sizeof_ipv4 + Cstruct.len t.options) then
       Error "Not enough space for IPv4 header"
-    else
-      Ok (unsafe_fill ~payload_len t buf)
+    else begin
+      fill ~payload_len t buf
+    end
 
   let make_cstruct ~payload_len t =
     let nearest_4 n = match n mod 4 with
@@ -74,7 +112,7 @@ module Marshal = struct
     let options_len = nearest_4 @@ Cstruct.len t.options in
     let buf = Cstruct.create (sizeof_ipv4 + options_len) in
     Cstruct.memset buf 0x00; (* should be removable in the future *)
-    unsafe_fill ~payload_len t buf;
+    ignore (fill ~payload_len t buf);
     buf
 end
 module Unmarshal = struct
@@ -152,7 +190,7 @@ module Unmarshal = struct
     | Some header ->
        let header_len = Fiat4Mirage.iPv4_Packet_Header_Len header in
        let buf_from_fiat_options opts =
-         (* The rest of the mirage code expects options to not be decoded *)
+         (* Mirage expects raw options, but Fiat decodes them *)
          let optbuf = Cstruct.create (4 * (List.length opts)) in
          List.iteri (fun idx ui32w64 ->
              Cstruct.BE.set_uint32 optbuf (4 * idx)
@@ -167,7 +205,7 @@ module Unmarshal = struct
                    ttl = Int64.to_int header.tTL; options; },
                   payload)
 
-  let of_cstruct = if !FiatUtils.ipv4_uses_fiat then of_cstruct_fiat else of_cstruct_mirage
+  let of_cstruct = if !FiatUtils.ipv4_decoding_uses_fiat then of_cstruct_fiat else of_cstruct_mirage
 
   let verify_transport_checksum ~proto ~ipv4_header ~transport_packet =
     (* note: it's not necessary to ensure padding to integral number of 16-bit fields here; ones_complement_list does this for us *)

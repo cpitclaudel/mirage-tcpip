@@ -2,11 +2,16 @@ let getenv s =
   try Some (Sys.getenv s) with Not_found -> None
 
 let verbose = ref false
-let ipv4_uses_fiat = ref false
-let arpv4_uses_fiat = ref false
-let ethif_uses_fiat = ref false
-let udp_uses_fiat = ref false
-let tcp_uses_fiat = ref false
+let ipv4_encoding_uses_fiat = ref false
+let ipv4_decoding_uses_fiat = ref false
+let arpv4_encoding_uses_fiat = ref false
+let arpv4_decoding_uses_fiat = ref false
+let ethif_encoding_uses_fiat = ref false
+let ethif_decoding_uses_fiat = ref false
+let udp_encoding_uses_fiat = ref false
+let udp_decoding_uses_fiat = ref false
+let tcp_encoding_uses_fiat = ref false
+let tcp_decoding_uses_fiat = ref false
 
 let nmsgs = ref 0
 
@@ -28,18 +33,28 @@ let _ =
     let params = Str.split (Str.regexp " +") (input_line stream) in
     close_in stream; params in
   verbose := List.mem "verbose" params;
-  ipv4_uses_fiat := List.mem "ipv4" params;
-  arpv4_uses_fiat := List.mem "arpv4" params;
-  ethif_uses_fiat := List.mem "ethif" params;
-  udp_uses_fiat := List.mem "udp" params;
-  tcp_uses_fiat := List.mem "tcp" params;
+  ipv4_encoding_uses_fiat := List.mem "ipv4-encoding" params;
+  ipv4_decoding_uses_fiat := List.mem "ipv4-decoding" params;
+  arpv4_encoding_uses_fiat := List.mem "arpv4-encoding" params;
+  arpv4_decoding_uses_fiat := List.mem "arpv4-decoding" params;
+  ethif_encoding_uses_fiat := List.mem "ethif-encoding" params;
+  ethif_decoding_uses_fiat := List.mem "ethif-decoding" params;
+  udp_encoding_uses_fiat := List.mem "udp-encoding" params;
+  udp_decoding_uses_fiat := List.mem "udp-decoding" params;
+  tcp_encoding_uses_fiat := List.mem "tcp-encoding" params;
+  tcp_decoding_uses_fiat := List.mem "tcp-decoding" params;
   Printf.printf "[FIAT CONFIG]\n";
-  Printf.printf "  verbose: %b\n" !verbose;
-  Printf.printf "  ipv4:    %b\n" !ipv4_uses_fiat;
-  Printf.printf "  arpv4:   %b\n" !arpv4_uses_fiat;
-  Printf.printf "  ethif:   %b\n" !ethif_uses_fiat;
-  Printf.printf "  udp:     %b\n" !udp_uses_fiat;
-  Printf.printf "  tcp:     %b\n" !tcp_uses_fiat
+  Printf.printf "  verbose:          %b\n" !verbose;
+  Printf.printf "  ipv4 (enc, dec):  %b\t%b\n"
+    !ipv4_encoding_uses_fiat !ipv4_decoding_uses_fiat;
+  Printf.printf "  arpv4 (enc, dec): %b\t%b\n"
+    !arpv4_encoding_uses_fiat !arpv4_decoding_uses_fiat;
+  Printf.printf "  ethif (enc, dec): %b\t%b\n"
+    !ethif_encoding_uses_fiat !ethif_decoding_uses_fiat;
+  Printf.printf "  udp (enc, dec):   %b\t%b\n"
+    !udp_encoding_uses_fiat !udp_decoding_uses_fiat;
+  Printf.printf "  tcp (enc, dec):   %b\t%b\n"
+    !tcp_encoding_uses_fiat !tcp_decoding_uses_fiat
 
 (* let cstruct_of_fiat_char_list (chars: Int64.t list) =
  *   let bytes = Bytes.create (List.length chars) in
@@ -53,6 +68,19 @@ let _ =
  *   done;
  *   List.rev_map fiat_char_of_char !chars *)
 
+type bytestring = Int64Word.t ArrayVector.storage_t
+
+let bytes_of_bytestring bytestring =
+  let int64ws = ArrayVector.to_array bytestring in
+  let bytes = Bytes.create (Array.length int64ws) in
+  for idx = 0 to Array.length int64ws - 1 do
+    Bytes.unsafe_set bytes idx (Int64Word.to_char int64ws.(idx))
+  done;
+  bytes
+
+let blit_bytestring_into_cstruct bytestring bsoff cstruct csoff len =
+  Cstruct.blit_from_bytes (bytes_of_bytestring bytestring) bsoff cstruct csoff len
+
 let bytestring_of_cstruct cstruct =
   let int64ws = Array.make (Cstruct.len cstruct) Int64Word.w0 in
   for idx = 0 to Cstruct.len cstruct - 1 do
@@ -61,13 +89,8 @@ let bytestring_of_cstruct cstruct =
   done;
   ArrayVector.of_array int64ws
 
-let cstruct_of_bytestring (bytestring: Int64Word.t ArrayVector.storage_t) =
-  let int64ws = ArrayVector.to_array bytestring in
-  let bytes = Bytes.create (Array.length int64ws) in
-  for idx = 0 to Array.length int64ws - 1 do
-    Bytes.unsafe_set bytes idx (Int64Word.to_char int64ws.(idx))
-  done;
-  Cstruct.of_bytes bytes
+let cstruct_of_bytestring (bytestring: bytestring) =
+  Cstruct.of_bytes (bytes_of_bytestring bytestring)
 
 let string_of_chars chars =
   let str = Bytes.create (List.length chars) in
@@ -99,8 +122,16 @@ exception Fiat_parsing_failed
 exception Fiat_incorrect_value
 exception Unsupported_by_mirage
 
-let make_decoder (f: int -> Int64Word.t ArrayVector.storage_t -> 'a) =
-  fun cstruct -> f (Cstruct.len cstruct) (bytestring_of_cstruct cstruct)
+let make_encoder (encoder: int -> 'a -> bytestring -> bytestring option) =
+  fun (pkt: 'a) (cstruct: Cstruct.t) ->
+  let bs_len = Cstruct.len cstruct in
+  let bytestring = ArrayVector.of_array (Array.make bs_len Int64Word.w0) in
+  match encoder bs_len pkt bytestring with
+  | Some bytestring -> blit_bytestring_into_cstruct bytestring 0 cstruct 0 bs_len; Result.Ok ()
+  | None -> Result.Error "Fiat encoding failed"
+
+let make_decoder (decoder: int -> bytestring -> 'a) =
+  fun cstruct -> decoder (Cstruct.len cstruct) (bytestring_of_cstruct cstruct)
 
 (* (* Set to `true` to raise an error if fiat value doesn't match *) *)
 (* let validate_fiat_parsing = false *)
