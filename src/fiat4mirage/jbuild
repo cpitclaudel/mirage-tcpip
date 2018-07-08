@@ -1,0 +1,7 @@
+(jbuild_version 1)
+(library
+ ((name        fiat4mirage)
+  (public_name tcpip.fiat4mirage)
+  (libraries   (logs cstruct))
+  (flags (:standard "-w" "-27-39"))
+  (wrapped false)))

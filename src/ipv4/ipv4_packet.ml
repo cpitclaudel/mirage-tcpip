@@ -86,7 +86,7 @@ module Unmarshal = struct
     | 17 -> Some `UDP
     | _  -> None
 
-  let of_cstruct buf =
+  let of_cstruct_mirage buf =
     let open Rresult in
     let open Ipv4_wire in
     let check_version buf =
@@ -135,6 +135,39 @@ module Unmarshal = struct
       )
     in
     size_check buf >>= check_version >>= get_header_length >>= parse buf
+
+  let fiat_ipv4_decode = FiatUtils.make_decoder Fiat4Mirage.fiat_ipv4_decode
+
+  let fiat_protocol_to_protocol = function
+    | Fiat4Mirage.ICMP -> `ICMP
+    | Fiat4Mirage.TCP -> `TCP
+    | Fiat4Mirage.UDP -> `UDP
+
+  let of_cstruct_fiat buf =
+    FiatUtils.log "ipv4" "Parsing an ipv4 datagram";
+    match fiat_ipv4_decode buf with
+    | None ->
+       let fmt = Printf.sprintf "Fiat parsing failed; packet was %s\n" in
+       Result.Error (fmt (Cstruct.to_string buf))
+    | Some header ->
+       let header_len = Fiat4Mirage.iPv4_Packet_Header_Len header in
+       let buf_from_fiat_options opts =
+         (* The rest of the mirage code expects options to not be decoded *)
+         let optbuf = Cstruct.create (4 * (List.length opts)) in
+         List.iteri (fun idx ui32w64 ->
+             Cstruct.BE.set_uint32 optbuf (4 * idx)
+               (Int64.to_int32 ui32w64)) opts;
+         optbuf in
+       let options = buf_from_fiat_options header.options in
+       let payload = Cstruct.sub buf header_len (Int64.to_int header.totalLength) in
+       let proto = Fiat4Mirage.fiat_ipv4_enum_to_protocol header.protocol in
+       Result.Ok ({src = Ipaddr.V4.of_int32 (Int64.to_int32 header.sourceAddress);
+                   dst = Ipaddr.V4.of_int32 (Int64.to_int32 header.destAddress);
+                   proto = Marshal.protocol_to_int (fiat_protocol_to_protocol proto);
+                   ttl = Int64.to_int header.tTL; options; },
+                  payload)
+
+  let of_cstruct = if !FiatUtils.ipv4_uses_fiat then of_cstruct_fiat else of_cstruct_mirage
 
   let verify_transport_checksum ~proto ~ipv4_header ~transport_packet =
     (* note: it's not necessary to ensure padding to integral number of 16-bit fields here; ones_complement_list does this for us *)
