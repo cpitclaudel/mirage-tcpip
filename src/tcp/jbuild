@@ -2,6 +2,7 @@
 (library
  ((name        tcp)
   (public_name tcpip.tcp)
+  (flags (:standard "-w" "-3"))
   (libraries   (logs mirage-protocols-lwt ipaddr cstruct 
                 rresult mirage-profile io-page tcpip duration
                 randomconv fmt mirage-time-lwt mirage-clock
