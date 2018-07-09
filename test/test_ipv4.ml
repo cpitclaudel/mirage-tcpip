@@ -25,7 +25,7 @@ let test_unmarshal_without_options () =
       Alcotest.(check int) "payload" (Cstruct.len payload) 20;
       Lwt.return_unit
   | _ ->
-      Alcotest.fail "Fail to parse ip packet with options"
+      Alcotest.fail "Fail to parse ip packet without options"
 
 let test_unmarshal_regression () =
   let p = Cstruct.of_string "\x49\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30" in
