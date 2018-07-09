@@ -75,21 +75,24 @@ module Marshal = struct
         failwith "Unexpected option length";
       let options = ref [] in
       for off = 0 to (Cstruct.len buf / 4) - 1 do
-        options := Int64.of_int32 (Cstruct.BE.get_uint32 buf (4 * off)) :: !options
+        options := Int64Word.of_uint32 (Cstruct.BE.get_uint32 buf (4 * off)) :: !options
       done;
       List.rev !options in
+    Printf.printf "IP: %s %s\n%!"
+      (Int32.to_string (Ipaddr.V4.to_int32 t.src))
+      (Int32.to_string (Ipaddr.V4.to_int32 t.dst));
     let fiat_packet = Fiat4Mirage.{
-          totalLength = Int64.of_int (sizeof_ipv4 + options_len + payload_len);
+          totalLength = Int64Word.of_uint (sizeof_ipv4 + options_len + payload_len);
           (* Mirage doesn't support the following 4 fields: *)
-          iD = Int64.zero;
+          iD = Int64Word.wzero 3;
           dF = false;
           mF = false;
-          fragmentOffset = Int64.zero;
+          fragmentOffset = Int64Word.wzero 13;
           (* </> *)
-          tTL = Int64.of_int t.ttl;
+          tTL = Int64Word.of_uint t.ttl;
           protocol = Fiat4Mirage.fiat_ipv4_protocol_to_enum (protocol_to_fiat_protocol t.proto);
-          sourceAddress = Int64.of_int32 (Ipaddr.V4.to_int32 t.src);
-          destAddress = Int64.of_int32 (Ipaddr.V4.to_int32 t.dst);
+          sourceAddress = Int64Word.of_uint32 (Ipaddr.V4.to_int32 t.src);
+          destAddress = Int64Word.of_uint32 (Ipaddr.V4.to_int32 t.dst);
           options = fiat_options_from_buf t.options } in
     fiat_ipv4_encode fiat_packet buf
 
@@ -188,24 +191,32 @@ module Unmarshal = struct
        let fmt = Printf.sprintf "Fiat parsing failed; packet was %s\n" in
        Result.Error (fmt (Cstruct.to_string buf))
     | Some header ->
-       let header_len = Fiat4Mirage.iPv4_Packet_Header_Len header in
+       let header_len = 4 * (Fiat4Mirage.iPv4_Packet_Header_Len header) in
        let buf_from_fiat_options opts =
          (* Mirage expects raw options, but Fiat decodes them *)
          let optbuf = Cstruct.create (4 * (List.length opts)) in
          List.iteri (fun idx ui32w64 ->
              Cstruct.BE.set_uint32 optbuf (4 * idx)
-               (Int64.to_int32 ui32w64)) opts;
+               (Int64Word.to_int32 ui32w64)) opts;
          optbuf in
        let options = buf_from_fiat_options header.options in
-       let payload = Cstruct.sub buf header_len (Int64.to_int header.totalLength) in
+       let payload_len = (Int64Word.to_int header.totalLength) - header_len in
        let proto = Fiat4Mirage.fiat_ipv4_enum_to_protocol header.protocol in
-       Result.Ok ({src = Ipaddr.V4.of_int32 (Int64.to_int32 header.sourceAddress);
-                   dst = Ipaddr.V4.of_int32 (Int64.to_int32 header.destAddress);
+       (* Printf.printf "Header len: %d; payload_len: %d\n" header_len payload_len;
+        * Printf.printf "SRC: %s\nDST: %s\n"
+        *   (Int64Word.bits header.sourceAddress)
+        *   (Int64Word.bits header.destAddress); *)
+       Result.Ok ({src = Ipaddr.V4.of_int32 (Int64Word.to_int32 header.sourceAddress);
+                   dst = Ipaddr.V4.of_int32 (Int64Word.to_int32 header.destAddress);
                    proto = Marshal.protocol_to_int (fiat_protocol_to_protocol proto);
-                   ttl = Int64.to_int header.tTL; options; },
-                  payload)
+                   ttl = Int64Word.to_int header.tTL; options; },
+                  Cstruct.sub buf header_len payload_len)
 
-  let of_cstruct = if !FiatUtils.ipv4_decoding_uses_fiat then of_cstruct_fiat else of_cstruct_mirage
+  let of_cstruct buf =
+    if !FiatUtils.ipv4_decoding_uses_fiat then
+      of_cstruct_fiat buf
+    else
+      of_cstruct_mirage buf
 
   let verify_transport_checksum ~proto ~ipv4_header ~transport_packet =
     (* note: it's not necessary to ensure padding to integral number of 16-bit fields here; ones_complement_list does this for us *)

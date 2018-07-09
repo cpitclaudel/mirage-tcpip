@@ -17,11 +17,49 @@ let example_ipv4_tcp = "\
 \x80\x12\x72\x10\xad\x83\x00\x00\x02\x04\x05\x48\x01\x01\x04\x02\
 \x01\x03\x03\x08"
 
+(* let print_fiat_packet pkt =
+ *   let open Fiat4Mirage in
+ *   Printf.printf "{\n";
+ *   Printf.printf "  totalLength = %s;\n" (string_of_int pkt.totalLength);
+ *   Printf.printf "  id = %s;\n" (string_of_int pkt.iD);
+ *   Printf.printf "  df = %s;\n" (string_of_bool pkt.dF);
+ *   Printf.printf "  mf = %s;\n" (string_of_bool pkt.mF);
+ *   Printf.printf "  fragmentOffset = %s;\n" (string_of_int pkt.fragmentOffset);
+ *   Printf.printf "  ttl = %s;\n" (string_of_int pkt.ttl);
+ *   Printf.printf "  protocol = %s;\n" (string_of_ipv4_protocol pkt.protocol);
+ *   Printf.printf "  sourceAddress = %s;\n" (Int32.to_string pkt.sourceAddress);
+ *   Printf.printf "  destAddress = %s;\n" (Int32.to_string pkt.destAddress);
+ *   Printf.printf "  options = [%s];\n" (String.concat ", " (List.map Int32.to_string pkt.options));
+ *   Printf.printf "}\n" *)
+
+let print_packet pkt =
+  let open Ipv4_packet in
+  Printf.printf "{\n";
+  Printf.printf "  src = %s;\n" (Ipaddr.V4.to_string pkt.src) (* : Ipaddr.V4.t; *);
+  Printf.printf "  dst = %s;\n" (Ipaddr.V4.to_string pkt.dst) (* : Ipaddr.V4.t; *);
+  Printf.printf "  proto = %d;\n" pkt.proto (* : Cstruct.uint8; *);
+  Printf.printf "  ttl = %d;\n" pkt.ttl (* : Cstruct.uint8; *);
+  Printf.printf "  options = %s;\n" (Cstruct.to_string pkt.options) (* : Cstruct.t; *);
+  Printf.printf "}\n"
+
 let udp_ipv4_correct_positive () =
   let buf = Cstruct.of_string example_ipv4_udp in
+  (* FiatUtils.ipv4_decoding_uses_fiat := false;
+   * FiatUtils.ipv4_encoding_uses_fiat := false; *)
   let (ipv4_header, transport_packet) = unwrap_ipv4 buf in
+  (* FiatUtils.ipv4_decoding_uses_fiat := true;
+   * FiatUtils.ipv4_encoding_uses_fiat := true;
+   * let (ipv4_header_fiat, transport_packet_fiat) = unwrap_ipv4 buf in
+   * FiatUtils.ipv4_decoding_uses_fiat := false;
+   * FiatUtils.ipv4_encoding_uses_fiat := false;
+   * Printf.printf "Reference:";
+   * Cstruct.hexdump transport_packet;
+   * Printf.printf "Fiat:";
+   * Cstruct.hexdump transport_packet_fiat;
+   * Format.printf "Reference: %a\n" Ipv4_packet.pp ipv4_header;
+   * Format.printf "Fiat: %a\n" Ipv4_packet.pp ipv4_header_fiat; *)
   Alcotest.(check bool) "for a correct UDP checksum, return true"
-    true @@ verify_ipv4_udp ~ipv4_header ~transport_packet;
+    true @@ verify_ipv4_udp ~ipv4_header:ipv4_header ~transport_packet:transport_packet;
   Lwt.return_unit
 
 let udp_ipv4_correct_negative () =
