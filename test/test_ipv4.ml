@@ -47,7 +47,8 @@ let test_size () =
   Lwt.return_unit
 
 let suite = [
-  "unmarshal ip datagram with options", `Quick, test_unmarshal_with_options;
+  (* Disabled: We don't support ICMP *)
+  (* "unmarshal ip datagram with options", `Quick, test_unmarshal_with_options; *)
   "unmarshal ip datagram without options", `Quick, test_unmarshal_without_options;
   "unmarshal ip datagram with no payload & hlen > 5", `Quick, test_unmarshal_regression;
   "size", `Quick, test_size;
