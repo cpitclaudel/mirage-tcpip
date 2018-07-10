@@ -57,17 +57,17 @@ let _ =
   Printf.printf "  tcp-enc:   %b\n" !tcp_encoding_uses_fiat;
   Printf.printf "  tcp-dec:   %b\n" !tcp_decoding_uses_fiat
 
-(* let cstruct_of_fiat_char_list (chars: Int64.t list) =
- *   let bytes = Bytes.create (List.length chars) in
- *   List.iteri (fun idx c -> Bytes.unsafe_set bytes idx (char_of_fiat_char c)) chars;
- *   Cstruct.of_bytes bytes
- *
- * let fiat_char_list_of_cstruct cstruct =
- *   let chars = ref [] in
- *   for idx = 0 to Cstruct.len cstruct - 1 do
- *     chars := Cstruct.get_char cstruct idx :: !chars
- *   done;
- *   List.rev_map fiat_char_of_char !chars *)
+let cstruct_of_fiat_char_list (chars: Int64.t list) =
+  let bytes = Bytes.create (List.length chars) in
+  List.iteri (fun idx c -> Bytes.unsafe_set bytes idx (Int64Word.to_char c)) chars;
+  Cstruct.of_bytes bytes
+
+let fiat_char_list_of_cstruct cstruct =
+  let chars = ref [] in
+  for idx = 0 to Cstruct.len cstruct - 1 do
+    chars := Cstruct.get_char cstruct idx :: !chars
+  done;
+  List.rev_map Int64Word.of_char !chars
 
 type bytestring = Int64Word.t ArrayVector.storage_t
 

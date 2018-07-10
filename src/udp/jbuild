@@ -2,6 +2,6 @@
 (library
  ((name        tcpip_udpv4)
   (public_name tcpip.udp)
-  (libraries   (mirage-protocols-lwt mirage-random rresult logs tcpip randomconv))
+  (libraries   (mirage-protocols-lwt mirage-random rresult logs tcpip randomconv tcpip.fiat4mirage))
   (preprocess (pps (ppx_cstruct)))
   (wrapped false)))

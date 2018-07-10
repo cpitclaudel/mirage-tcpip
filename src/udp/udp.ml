@@ -43,7 +43,7 @@ module Make(Ip: Mirage_protocols_lwt.IP)(Random:Mirage_random.C) = struct
      here?  Currently we process all incoming packets without making
      sure they're either unicast for us or otherwise interesting. *)
   let input ~listeners _t ~src ~dst buf =
-    match Udp_packet.Unmarshal.of_cstruct buf with
+    match Udp_packet.Unmarshal.of_cstruct (Ip.to_uipaddr src) (Ip.to_uipaddr dst) buf with
     | Error s ->
       Log.debug (fun f ->
           f "Discarding received UDP message: error parsing: %s" s);

@@ -10,10 +10,10 @@ module Unmarshal : sig
 
   type error = string 
 
-(** [of_cstruct buf] attempts to interpret [buf] as a UDP header.  If
+(** [of_cstruct src dst buf] attempts to interpret [buf] as a UDP header.  If
     successful, it returns [Ok (header, payload)], although [payload] may be an
     empty Cstruct.t . *)
-  val of_cstruct : Cstruct.t -> (t * Cstruct.t, error) result
+  val of_cstruct : Ipaddr.t -> Ipaddr.t -> Cstruct.t -> (t * Cstruct.t, error) result
 end
 module Marshal : sig
 

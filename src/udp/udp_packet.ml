@@ -13,10 +13,10 @@ let pp fmt t =
 module Unmarshal = struct
 
   type error = string
+  open Rresult
+  open Udp_wire
 
-  let of_cstruct buf =
-    let open Rresult in
-    let open Udp_wire in
+  let of_cstruct_mirage _src _dst buf =
     let check_header_length () =
       if Cstruct.len buf < sizeof_udp then Error "UDP header too short" else Ok ()
     in
@@ -39,6 +39,29 @@ module Unmarshal = struct
     let dst_port = Udp_wire.get_udp_dest_port buf in
     let payload = Cstruct.sub buf Udp_wire.sizeof_udp payload_len in
     Ok ({ src_port; dst_port; }, payload)
+
+  let fiat_udp_decode = FiatUtils.make_decoder Fiat4Mirage.fiat_udp_decode
+
+  let ip_to_v4_int64w ip =
+    match Ipaddr.to_v4 ip with
+    | Some v4 -> Int64.of_int32 (Ipaddr.V4.to_int32 v4)
+    | None -> raise FiatUtils.Fiat_incorrect_value
+
+  let of_cstruct_fiat src dst buf =
+    FiatUtils.log "udp" "Parsing a UDP segment";
+    match fiat_udp_decode buf (ip_to_v4_int64w src) (ip_to_v4_int64w dst) (Cstruct.len buf) with
+    | Some pkt ->
+       let src_port = Int64Word.to_int pkt.sourcePort0 in
+       let dst_port = Int64Word.to_int pkt.destPort0 in
+       Result.Ok ({ src_port; dst_port }, FiatUtils.cstruct_of_fiat_char_list pkt.payload0)
+    | None ->
+       Result.Error (Printf.sprintf "Fiat parsing failed; packet was %s\n" (Cstruct.to_string buf))
+    | exception FiatUtils.Fiat_incorrect_value ->
+       Result.Error "Fiat doesn't support IPv6"
+
+  let of_cstruct =
+    if !FiatUtils.udp_decoding_uses_fiat then of_cstruct_fiat
+    else of_cstruct_mirage
 end
 module Marshal = struct
   open Rresult
