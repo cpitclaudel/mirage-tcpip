@@ -53,10 +53,10 @@ module Unmarshal = struct
        Result.Ok ({ destination; source; ethertype }, payload)
     | None ->
        Result.Error (Printf.sprintf "Fiat parsing failed; packet was %s\n"
-                       (Cstruct.to_string frame))
+                       (FiatUtils.cstruct_to_debug_string frame))
     | exception FiatUtils.Unsupported_by_mirage ->
        Result.Error (Printf.sprintf "Ethernet packet unsupported by mirage; packet was %s\n"
-                       (Cstruct.to_string frame))
+                       (FiatUtils.cstruct_to_debug_string frame))
 
   let of_cstruct =
     if !FiatUtils.ethif_decoding_uses_fiat then of_cstruct_fiat

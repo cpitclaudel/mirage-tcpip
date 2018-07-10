@@ -78,9 +78,11 @@ module Marshal = struct
         options := Int64Word.of_uint32 (Cstruct.BE.get_uint32 buf (4 * off)) :: !options
       done;
       List.rev !options in
-    Printf.printf "IP: %s %s\n%!"
-      (Int32.to_string (Ipaddr.V4.to_int32 t.src))
-      (Int32.to_string (Ipaddr.V4.to_int32 t.dst));
+    (* Printf.printf "IP: %s (%s) %s (%s)\n%!"
+     *   (Int32.to_string (Ipaddr.V4.to_int32 t.src))
+     *   (Ipaddr.V4.to_string t.src)
+     *   (Int32.to_string (Ipaddr.V4.to_int32 t.dst))
+     *   (Ipaddr.V4.to_string t.dst); *)
     let fiat_packet = Fiat4Mirage.{
           totalLength = Int64Word.of_uint (sizeof_ipv4 + options_len + payload_len);
           (* Mirage doesn't support the following 4 fields: *)
@@ -189,8 +191,8 @@ module Unmarshal = struct
     match fiat_ipv4_decode buf with
     | None ->
        let fmt = Printf.sprintf "Fiat parsing failed; packet was %s\n" in
-       Result.Error (fmt (Cstruct.to_string buf))
-    | Some header ->
+       Result.Error (fmt (FiatUtils.cstruct_to_debug_string buf))
+    | Some (header: Fiat4Mirage.iPv4_Packet) ->
        let header_len = 4 * (Fiat4Mirage.iPv4_Packet_Header_Len header) in
        let buf_from_fiat_options opts =
          (* Mirage expects raw options, but Fiat decodes them *)

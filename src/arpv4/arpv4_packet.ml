@@ -83,22 +83,22 @@ module Unmarshal = struct
     try
       match fiat_arpv4_decode buf with
       | Some pkt ->
-         let src_mac = FiatUtils.string_of_fiat_chars pkt.senderHardAddress in
-         let target_mac = FiatUtils.string_of_fiat_chars pkt.targetHardAddress in
+         let src_mac = FiatUtils.string_of_char_int64ws pkt.senderHardAddress in
+         let target_mac = FiatUtils.string_of_char_int64ws pkt.targetHardAddress in
          (match (Macaddr.of_bytes src_mac, Macaddr.of_bytes target_mac) with
           | None, None   -> Result.Error (Bad_mac [ src_mac ; target_mac ])
           | None, Some _ -> Result.Error (Bad_mac [ src_mac ])
           | Some _, None -> Result.Error (Bad_mac [ target_mac ])
           | Some src_mac, Some target_mac ->
-             let src_ip = Ipaddr.V4.of_int32 (FiatUtils.uint32_of_fiat_chars pkt.senderProtAddress) in
-             let target_ip = Ipaddr.V4.of_int32 (FiatUtils.uint32_of_fiat_chars pkt.targetProtAddress) in
+             let src_ip = Ipaddr.V4.of_int32 (FiatUtils.uint32_of_char_int64ws pkt.senderProtAddress) in
+             let target_ip = Ipaddr.V4.of_int32 (FiatUtils.uint32_of_char_int64ws pkt.targetProtAddress) in
              let op = op_of_fiat_operation (Fiat4Mirage.fiat_arpv4_operation_of_enum pkt.operation) in
              Result.Ok { op; sha = src_mac; spa = src_ip;
                          tha = target_mac; tpa = target_ip })
       | None ->
-         Result.Error (FiatError (Printf.sprintf "Fiat parsing failed; packet was %s\n" (Cstruct.to_string buf)))
+         Result.Error (FiatError (Printf.sprintf "Fiat parsing failed; packet was %s\n" (FiatUtils.cstruct_to_debug_string buf)))
     with FiatUtils.Unsupported_by_mirage ->
-      Result.Error (FiatError (Printf.sprintf "ARP packet unsupported by mirage; packet was %s\n" (Cstruct.to_string buf)))
+      Result.Error (FiatError (Printf.sprintf "ARP packet unsupported by mirage; packet was %s\n" (FiatUtils.cstruct_to_debug_string buf)))
 
   let of_cstruct =
     if !FiatUtils.arpv4_decoding_uses_fiat then of_cstruct_fiat

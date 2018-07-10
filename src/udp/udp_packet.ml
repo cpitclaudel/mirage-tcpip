@@ -42,22 +42,20 @@ module Unmarshal = struct
 
   let fiat_udp_decode = FiatUtils.make_decoder Fiat4Mirage.fiat_udp_decode
 
-  let ip_to_v4_int64w ip =
-    match Ipaddr.to_v4 ip with
-    | Some v4 -> Int64.of_int32 (Ipaddr.V4.to_int32 v4)
-    | None -> raise FiatUtils.Fiat_incorrect_value
-
   let of_cstruct_fiat src dst buf =
     FiatUtils.log "udp" "Parsing a UDP segment";
-    match fiat_udp_decode buf (ip_to_v4_int64w src) (ip_to_v4_int64w dst) (Cstruct.len buf) with
-    | Some pkt ->
+    match fiat_udp_decode buf
+            (FiatUtils.ip_to_v4_int64w src)
+            (FiatUtils.ip_to_v4_int64w dst)
+            (Int64Word.of_uint (Cstruct.len buf)) with
+    | Some (pkt: Fiat4Mirage.uDP_Packet) ->
        let src_port = Int64Word.to_int pkt.sourcePort0 in
        let dst_port = Int64Word.to_int pkt.destPort0 in
-       Result.Ok ({ src_port; dst_port }, FiatUtils.cstruct_of_fiat_char_list pkt.payload0)
+       Result.Ok ({ src_port; dst_port }, FiatUtils.cstruct_of_char_int64ws pkt.payload0)
     | None ->
-       Result.Error (Printf.sprintf "Fiat parsing failed; packet was %s\n" (Cstruct.to_string buf))
-    | exception FiatUtils.Fiat_incorrect_value ->
-       Result.Error "Fiat doesn't support IPv6"
+       Result.Error (Printf.sprintf "Fiat parsing failed; packet was %s\n" (FiatUtils.cstruct_to_debug_string buf))
+    | exception FiatUtils.Fiat_no_ipv6 msg ->
+       Result.Error msg
 
   let of_cstruct =
     if !FiatUtils.udp_decoding_uses_fiat then of_cstruct_fiat
