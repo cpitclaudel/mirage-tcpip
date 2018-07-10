@@ -12,6 +12,7 @@ val pp : Format.formatter -> t -> unit
 
 module Unmarshal : sig
   type error =
+    | FiatError of string
     | Too_short
     | Unusable
     | Unknown_code of Cstruct.uint16

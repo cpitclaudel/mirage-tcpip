@@ -22,12 +22,14 @@ let pp fmt t =
 
 module Unmarshal = struct
   type error =
+    | FiatError of string
     | Too_short
     | Unusable
     | Unknown_code of Cstruct.uint16
     | Bad_mac of string list
 
   let string_of_error = function
+    | FiatError s -> s
     | Too_short -> "buffer too short to be a valid arpv4 header"
     | Unusable -> "arpv4 message is not for ipv4 -> ethernet"
     | Unknown_code i -> Printf.sprintf "arpv4 message has unknown code %d" i
@@ -36,7 +38,7 @@ module Unmarshal = struct
 
   let pp_error formatter e = Format.fprintf formatter "%s" @@ string_of_error e
 
-  let of_cstruct buf =
+  let of_cstruct_mirage buf =
     let open Rresult in
     let check_len buf =
       if (Cstruct.len buf) < sizeof_arp then (Error Too_short) else
@@ -66,6 +68,41 @@ module Unmarshal = struct
            sha = src_mac; spa = src_ip;
            tha = target_mac; tpa = target_ip
          }
+
+  let op_of_fiat_operation (operation: Fiat4Mirage.fiat_arpv4_operation) =
+    match operation with
+    | Fiat4Mirage.Request -> Request
+    | Fiat4Mirage.Reply -> Reply
+    | Fiat4Mirage.RARPRequest -> raise FiatUtils.Unsupported_by_mirage
+    | Fiat4Mirage.RARPReply -> raise FiatUtils.Unsupported_by_mirage
+
+  let fiat_arpv4_decode = FiatUtils.make_decoder Fiat4Mirage.fiat_arpv4_decode
+
+  let of_cstruct_fiat buf =
+    FiatUtils.log "arpv4" "Parsing an arpv4 message";
+    try
+      match fiat_arpv4_decode buf with
+      | Some pkt ->
+         let src_mac = FiatUtils.string_of_fiat_chars pkt.senderHardAddress in
+         let target_mac = FiatUtils.string_of_fiat_chars pkt.targetHardAddress in
+         (match (Macaddr.of_bytes src_mac, Macaddr.of_bytes target_mac) with
+          | None, None   -> Result.Error (Bad_mac [ src_mac ; target_mac ])
+          | None, Some _ -> Result.Error (Bad_mac [ src_mac ])
+          | Some _, None -> Result.Error (Bad_mac [ target_mac ])
+          | Some src_mac, Some target_mac ->
+             let src_ip = Ipaddr.V4.of_int32 (FiatUtils.uint32_of_fiat_chars pkt.senderProtAddress) in
+             let target_ip = Ipaddr.V4.of_int32 (FiatUtils.uint32_of_fiat_chars pkt.targetProtAddress) in
+             let op = op_of_fiat_operation (Fiat4Mirage.fiat_arpv4_operation_of_enum pkt.operation) in
+             Result.Ok { op; sha = src_mac; spa = src_ip;
+                         tha = target_mac; tpa = target_ip })
+      | None ->
+         Result.Error (FiatError (Printf.sprintf "Fiat parsing failed; packet was %s\n" (Cstruct.to_string buf)))
+    with FiatUtils.Unsupported_by_mirage ->
+      Result.Error (FiatError (Printf.sprintf "ARP packet unsupported by mirage; packet was %s\n" (Cstruct.to_string buf)))
+
+  let of_cstruct =
+    if !FiatUtils.arpv4_decoding_uses_fiat then of_cstruct_fiat
+    else of_cstruct_mirage
 end
 module Marshal = struct
 
