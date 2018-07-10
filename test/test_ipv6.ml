@@ -53,7 +53,7 @@ let udp_message = Cstruct.of_string "hello on UDP over IPv6"
 let check_for_one_udp_packet netif ~src ~dst buf =
   Alcotest.(check ip) "sender address" (Ipaddr.V6.of_string_exn "fc00::23") src;
   Alcotest.(check ip) "receiver address" (Ipaddr.V6.of_string_exn "fc00::45") dst;
-  (match Udp_packet.Unmarshal.of_cstruct buf with
+  (match Udp_packet.Unmarshal.of_cstruct (Ipv6.to_uipaddr src) (Ipv6.to_uipaddr dst) buf with
   | Ok (_, payload) ->
     Alcotest.(check cstruct) "payload is correct" udp_message payload
   | Error m -> Alcotest.fail m);

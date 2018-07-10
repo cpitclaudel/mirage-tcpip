@@ -36,18 +36,15 @@ let fails msg f args =
   | Ok _ -> Alcotest.fail msg
   | Error _ -> ()
 
+let localhost = Ipaddr.of_string_exn "127.0.0.1"
+
 let marshal_unmarshal () =
-  let parse = Udp_packet.Unmarshal.of_cstruct in
+  let parse = Udp_packet.Unmarshal.of_cstruct localhost localhost in
   fails "unmarshal a 0-length packet" parse (Cstruct.create 0);
   fails "unmarshal a too-short packet" parse (Cstruct.create 2);
-  let with_data = Cstruct.create 8 in
-  Cstruct.memset with_data 0;
-  Udp_wire.set_udp_source_port with_data 2000;
-  Udp_wire.set_udp_dest_port with_data 21;
-  Udp_wire.set_udp_length with_data 20;
+  let udp_segment = Cstruct.of_string "\x005\x005\x00\x14\x0b^abcdefgh1234" in
   let payload = Cstruct.of_string "abcdefgh1234" in
-  let with_data = Cstruct.concat [with_data; payload] in
-  match Udp_packet.Unmarshal.of_cstruct with_data with
+  match Udp_packet.Unmarshal.of_cstruct localhost localhost udp_segment with
   | Error s -> Alcotest.fail s
   | Ok (_header, data) ->
     Alcotest.(check cstruct) "unmarshalling gives expected data" payload data;
@@ -66,7 +63,7 @@ let unmarshal_regression () =
   Cstruct.set_char i 4 '\x04';
   Cstruct.set_char i 5 '\x00';
   Alcotest.(check (result reject pass)) "correctly return error for bad packet"
-    (Error "parse failed") (Udp_packet.Unmarshal.of_cstruct i);
+    (Error "parse failed") (Udp_packet.Unmarshal.of_cstruct localhost localhost i);
   Lwt.return_unit
 
 
@@ -82,7 +79,7 @@ let marshal_marshal () =
   |> Alcotest.check error_str "Buffer too short" (Error "Not enough space for a UDP header");
   Udp_packet.Marshal.into_cstruct ~pseudoheader ~payload udp buffer
   |> Alcotest.(check (result unit string)) "Buffer big enough for header" (Ok ());
-  Udp_packet.Unmarshal.of_cstruct (Cstruct.concat [buffer; payload])
+  Udp_packet.Unmarshal.of_cstruct (Ipaddr.V4 src) (Ipaddr.V4 dst) (Cstruct.concat [buffer; payload])
   |> Alcotest.(check (result (pair udp_packet cstruct) string)) "Save and reload" (Ok (udp, payload));
   Lwt.return_unit
 
