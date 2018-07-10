@@ -18,8 +18,7 @@ let equal {source; destination; ethertype} q =
   Ethif_wire.(compare (ethertype_to_int ethertype) (ethertype_to_int q.ethertype)) = 0
 
 module Unmarshal = struct
-
-  let of_cstruct frame =
+  let of_cstruct_mirage frame =
     if Cstruct.len frame >= sizeof_ethernet then
       match get_ethernet_ethertype frame |> int_to_ethertype with
       | None -> Error (Printf.sprintf "unknown ethertype 0x%x in frame"
@@ -32,6 +31,35 @@ module Unmarshal = struct
         Ok ({ destination; source; ethertype;}, payload)
     else
       Error "frame too small to contain a valid ethernet header"
+
+  let ethertype_of_fiat_type (ftype: Fiat4Mirage.fiat_ethernet_type) =
+    match ftype with
+    | Fiat4Mirage.ARP -> ARP
+    | Fiat4Mirage.IP -> IPv4
+    | Fiat4Mirage.RARP -> raise FiatUtils.Unsupported_by_mirage
+
+  (* let fiat_ipv4_encode = FiatUtils.make_encoder Fiat4Mirage.fiat_ipv4_encode *)
+  let fiat_ethernet_decode = FiatUtils.make_decoder Fiat4Mirage.fiat_ethernet_decode
+
+  let of_cstruct_fiat frame =
+    FiatUtils.log "ethif" "Parsing an ethernet frame";
+    match fiat_ethernet_decode frame sizeof_ethernet with
+    | Some pkt ->
+       let payload = Cstruct.shift frame sizeof_ethernet in
+       let source = Macaddr.of_bytes_exn (FiatUtils.bytes_of_bytestring pkt.source) in
+       let destination = Macaddr.of_bytes_exn (FiatUtils.bytes_of_bytestring pkt.destination) in
+       let ethertype = ethertype_of_fiat_type (Fiat4Mirage.fiat_ethernet_type_of_enum pkt.ethType) in
+       Result.Ok ({ destination; source; ethertype }, payload)
+    | None ->
+       Result.Error (Printf.sprintf "Fiat parsing failed; packet was %s\n"
+                       (Cstruct.to_string frame))
+    | exception FiatUtils.Unsupported_by_mirage ->
+       Result.Error (Printf.sprintf "Ethernet packet unsupported by mirage; packet was %s\n"
+                       (Cstruct.to_string frame))
+
+  let of_cstruct =
+    if !FiatUtils.ethif_decoding_uses_fiat then of_cstruct_fiat
+    else of_cstruct_mirage
 end
 
 module Marshal = struct
