@@ -19,7 +19,7 @@ val equal : t -> t -> bool
 module Unmarshal : sig
   type error = string
 
-  val of_cstruct : Cstruct.t -> (t * Cstruct.t, error) result
+  val of_cstruct : Ipaddr.t -> Ipaddr.t -> Cstruct.t -> (t * Cstruct.t, error) result
 end
 
 module Marshal : sig

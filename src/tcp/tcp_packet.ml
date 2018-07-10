@@ -34,7 +34,7 @@ module Unmarshal = struct
 
   type error = string
 
-  let of_cstruct pkt =
+  let of_cstruct_mirage _src _dst pkt =
     let open Tcp_wire in
     let check_len pkt =
       if Cstruct.len pkt < sizeof_tcp then
@@ -71,6 +71,38 @@ module Unmarshal = struct
     let data = Cstruct.shift pkt data_offset in
     Ok ({ urg; ack; psh; rst; syn; fin; window; options;
           sequence; ack_number; src_port; dst_port }, data)
+
+  let fiat_tcp_decode = FiatUtils.make_decoder Fiat4Mirage.fiat_tcp_decode
+
+  let of_cstruct_fiat src dst buf =
+    FiatUtils.log "tcp" "Parsing a TCP segment";
+    match fiat_tcp_decode buf
+            (FiatUtils.ip_to_v4_int64w src)
+            (FiatUtils.ip_to_v4_int64w dst)
+            (Int64Word.of_uint (Cstruct.len buf)) with
+    | Some (pkt: Fiat4Mirage.tCP_Packet) ->
+       let sequence = pkt.seqNumber |> Int64Word.to_int32 |> Sequence.of_int32 in
+       let ack_number = pkt.ackNumber |> Int64Word.to_int32 |> Sequence.of_int32 in
+       let urg = (match pkt.urgentPointer with Some _ -> true | None -> false) in
+       let ack, psh, rst, syn, fin = pkt.aCK, pkt.pSH, pkt.rST, pkt.sYN, pkt.fIN in
+       let window = Int64Word.to_int pkt.windowSize in
+       let src_port = Int64Word.to_int pkt.sourcePort in
+       let dst_port = Int64Word.to_int pkt.destPort in
+       Options.unmarshal (FiatUtils.cstruct_of_uint32_int64ws pkt.options0) >>= fun options ->
+       Result.Ok ({ urg; ack; psh; rst; syn; fin; window; options;
+                    sequence; ack_number; src_port; dst_port },
+                  FiatUtils.cstruct_of_char_int64ws pkt.payload)
+    | None ->
+       Result.Error (Printf.sprintf "Fiat parsing failed; packet was %s and IPs were %s, %s\n"
+                       (FiatUtils.cstruct_to_debug_string buf)
+                       (Int64.to_string (FiatUtils.ip_to_v4_int64w src))
+                       (Int64.to_string (FiatUtils.ip_to_v4_int64w src)))
+    | exception FiatUtils.Fiat_no_ipv6 msg ->
+       Result.Error msg
+
+  let of_cstruct =
+    if !FiatUtils.tcp_decoding_uses_fiat then of_cstruct_fiat
+    else of_cstruct_mirage
 end
 module Marshal = struct
   open Rresult

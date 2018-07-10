@@ -205,7 +205,7 @@ let test_marshal_into_cstruct () =
   Ipv4_packet.Unmarshal.verify_transport_checksum ~proto:`TCP ~ipv4_header
     ~transport_packet:raw
   |> Alcotest.(check bool) "Checksum correct" true;
-  Tcp.Tcp_packet.Unmarshal.of_cstruct raw
+  Tcp.Tcp_packet.Unmarshal.of_cstruct (Ipaddr.V4 src) (Ipaddr.V4 dst) raw
   |> Alcotest.(check (result (pair tcp_packet cstruct) string))
     "reload TCP packet" (Ok (packet, payload));
   let just_options = Cstruct.create options_size in
@@ -262,7 +262,7 @@ let test_marshal_without_padding () =
   Ipv4_packet.Unmarshal.verify_transport_checksum ~proto:`TCP ~ipv4_header
     ~transport_packet:raw
   |> Alcotest.(check bool) "Checksum correct" true;
-  Tcp.Tcp_packet.Unmarshal.of_cstruct raw
+  Tcp.Tcp_packet.Unmarshal.of_cstruct (Ipaddr.V4 src) (Ipaddr.V4 dst) raw
   |> Alcotest.(check (result (pair tcp_packet cstruct) string))
     "reload TCP packet" (Ok (packet, payload))
 

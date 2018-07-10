@@ -77,6 +77,8 @@ let pass_udp_traffic () =
       Alcotest.fail "UDP packet should have been received";
   ]
 
-let suite = [
-  "Send a UDP packet from one IPV6 stack and check it is received by another", `Quick, pass_udp_traffic;
-]
+(* No IPv6 support in Fiat: *)
+let suite = []
+(* let suite = [
+ *   "Send a UDP packet from one IPV6 stack and check it is received by another", `Quick, pass_udp_traffic;
+ * ] *)

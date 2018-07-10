@@ -6,6 +6,6 @@
   (libraries   (logs mirage-protocols-lwt ipaddr cstruct 
                 rresult mirage-profile io-page tcpip duration
                 randomconv fmt mirage-time-lwt mirage-clock
-                mirage-random))
+                mirage-random tcpip.fiat4mirage))
   (preprocess (pps (ppx_cstruct)))
   ))

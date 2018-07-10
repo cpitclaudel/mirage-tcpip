@@ -555,7 +555,7 @@ struct
   (* Main input function for TCP packets *)
   let input t ~listeners ~src ~dst data =
     let open Tcp_packet in
-    match Unmarshal.of_cstruct data with
+    match Unmarshal.of_cstruct (Ip.to_uipaddr src) (Ip.to_uipaddr dst) data with
     | Error s -> Log.debug (fun f -> f "parsing TCP header failed: %s" s);
       Lwt.return_unit
     | Ok (pkt, payload) ->
