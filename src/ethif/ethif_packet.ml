@@ -36,6 +36,7 @@ module Unmarshal = struct
     match ftype with
     | Fiat4Mirage.ARP -> ARP
     | Fiat4Mirage.IP -> IPv4
+    | Fiat4Mirage.IPV6 -> IPv6
     | Fiat4Mirage.RARP -> raise FiatUtils.Unsupported_by_mirage
 
   (* let fiat_ipv4_encode = FiatUtils.make_encoder Fiat4Mirage.fiat_ipv4_encode *)
