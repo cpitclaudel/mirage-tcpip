@@ -59,7 +59,7 @@ module Marshal = struct
     let checksum = Tcpip_checksum.ones_complement @@ Cstruct.sub buf 0 (20 + options_len) in
     set_ipv4_csum buf checksum
 
-    let fiat_ipv4_encode = FiatUtils.make_encoder Fiat4Mirage.fiat_ipv4_encode
+  let fiat_ipv4_encode = FiatUtils.make_encoder Fiat4Mirage.fiat_ipv4_encode
 
   let protocol_to_fiat_protocol = function
     | 1  -> Fiat4Mirage.ICMP
@@ -201,7 +201,7 @@ module Unmarshal = struct
          optbuf in
        let options = buf_from_fiat_options header.options in
        let payload_len = (Int64Word.to_int header.totalLength) - header_len in
-       let proto = Fiat4Mirage.fiat_ipv4_enum_to_protocol header.protocol in
+       let proto = Fiat4Mirage.fiat_ipv4_protocol_of_enum header.protocol in
        (* Printf.printf "Header len: %d; payload_len: %d\n" header_len payload_len;
         * Printf.printf "SRC: %s\nDST: %s\n"
         *   (Int64Word.bits header.sourceAddress)
@@ -212,11 +212,9 @@ module Unmarshal = struct
                    ttl = Int64Word.to_int header.tTL; options; },
                   Cstruct.sub buf header_len payload_len)
 
-  let of_cstruct buf =
-    if !FiatUtils.ipv4_decoding_uses_fiat then
-      of_cstruct_fiat buf
-    else
-      of_cstruct_mirage buf
+  let of_cstruct =
+    if !FiatUtils.ipv4_decoding_uses_fiat then of_cstruct_fiat
+    else of_cstruct_mirage
 
   let verify_transport_checksum ~proto ~ipv4_header ~transport_packet =
     (* note: it's not necessary to ensure padding to integral number of 16-bit fields here; ones_complement_list does this for us *)
