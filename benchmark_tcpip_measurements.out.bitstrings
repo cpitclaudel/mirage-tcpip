@@ -1,0 +1,35 @@
+$ ./benchmark_tcpip_tests.py 
+
+# Benchmarking ...
+>>		arp	0.16411
+>>		arp	0.17137
+>>		arp	0.17128
+>>		ether	0.11102
+>>		ether	0.11301
+>>		ether	0.11141
+>>		ip	0.21841
+>>		ip	0.20822
+>>		ip	0.20773
+>>		tcp	0.10984
+>>		tcp	0.10915
+>>		tcp	0.11030
+>>		udp	0.07833
+>>		udp	0.07920
+>>		udp	0.07940
+
+# Benchmarking ethif arpv4 ipv4 tcp udp...
+>>	ethif arpv4 ipv4 tcp udp	arp	10.01654
+>>	ethif arpv4 ipv4 tcp udp	arp	10.73463
+>>	ethif arpv4 ipv4 tcp udp	arp	10.70710
+>>	ethif arpv4 ipv4 tcp udp	ether	5.78368
+>>	ethif arpv4 ipv4 tcp udp	ether	5.97835
+>>	ethif arpv4 ipv4 tcp udp	ether	6.01809
+>>	ethif arpv4 ipv4 tcp udp	ip	22.76976
+>>	ethif arpv4 ipv4 tcp udp	ip	23.30089
+>>	ethif arpv4 ipv4 tcp udp	ip	22.28622
+>>	ethif arpv4 ipv4 tcp udp	tcp	42.18371
+>>	ethif arpv4 ipv4 tcp udp	tcp	42.33660
+>>	ethif arpv4 ipv4 tcp udp	tcp	39.84736
+>>	ethif arpv4 ipv4 tcp udp	udp	22.16457
+>>	ethif arpv4 ipv4 tcp udp	udp	22.95661
+>>	ethif arpv4 ipv4 tcp udp	udp	21.93843

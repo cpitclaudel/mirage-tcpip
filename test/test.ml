@@ -15,6 +15,7 @@
  *)
 
 let suite = [
+  "tight_loop"     , Test_tight_loop.suite  ;
   "checksums"      , Test_checksums.suite   ;
   "arp"            , Test_arp.suite         ;
   "ipv4"           , Test_ipv4.suite        ;

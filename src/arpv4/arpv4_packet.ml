@@ -69,19 +69,19 @@ module Unmarshal = struct
            tha = target_mac; tpa = target_ip
          }
 
-  let op_of_fiat_operation (operation: Fiat4Mirage.fiat_arpv4_operation) =
+  let op_of_fiat_operation (operation: Fiat4Mirage.fiat_arp_operation) =
     match operation with
     | Fiat4Mirage.Request -> Request
     | Fiat4Mirage.Reply -> Reply
     | Fiat4Mirage.RARPRequest -> raise FiatUtils.Unsupported_by_mirage
     | Fiat4Mirage.RARPReply -> raise FiatUtils.Unsupported_by_mirage
 
-  let fiat_arpv4_decode = FiatUtils.make_decoder Fiat4Mirage.fiat_arpv4_decode
+  let fiat_arp_decode = FiatUtils.make_decoder Fiat4Mirage.fiat_arp_decode
 
   let of_cstruct_fiat buf =
     FiatUtils.log "arpv4" "Parsing an arpv4 message";
     try
-      match fiat_arpv4_decode buf with
+      match fiat_arp_decode buf with
       | Some pkt ->
          let src_mac = FiatUtils.string_of_char_int64ws pkt.senderHardAddress in
          let target_mac = FiatUtils.string_of_char_int64ws pkt.targetHardAddress in
@@ -92,7 +92,7 @@ module Unmarshal = struct
           | Some src_mac, Some target_mac ->
              let src_ip = Ipaddr.V4.of_int32 (FiatUtils.uint32_of_char_int64ws pkt.senderProtAddress) in
              let target_ip = Ipaddr.V4.of_int32 (FiatUtils.uint32_of_char_int64ws pkt.targetProtAddress) in
-             let op = op_of_fiat_operation (Fiat4Mirage.fiat_arpv4_operation_of_enum pkt.operation) in
+             let op = op_of_fiat_operation (Fiat4Mirage.fiat_arp_operation_of_enum pkt.operation) in
              Result.Ok { op; sha = src_mac; spa = src_ip;
                          tha = target_mac; tpa = target_ip })
       | None ->
