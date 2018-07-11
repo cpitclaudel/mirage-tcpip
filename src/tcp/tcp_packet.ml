@@ -77,8 +77,8 @@ module Unmarshal = struct
   let of_cstruct_fiat src dst buf =
     FiatUtils.log "tcp" "Parsing a TCP segment";
     match fiat_tcp_decode buf
-            (FiatUtils.ip_to_v4_int64w src)
-            (FiatUtils.ip_to_v4_int64w dst)
+            (FiatUtils.ipv4_to_bytestring src)
+            (FiatUtils.ipv4_to_bytestring dst)
             (Int64Word.of_uint (Cstruct.len buf)) with
     | Some (pkt: Fiat4Mirage.tCP_Packet) ->
        let sequence = pkt.seqNumber |> Int64Word.to_int32 |> Sequence.of_int32 in
@@ -93,10 +93,8 @@ module Unmarshal = struct
                     sequence; ack_number; src_port; dst_port },
                   FiatUtils.cstruct_of_char_int64ws pkt.payload)
     | None ->
-       Result.Error (Printf.sprintf "Fiat parsing failed; packet was %s and IPs were %s, %s\n"
-                       (FiatUtils.cstruct_to_debug_string buf)
-                       (Int64.to_string (FiatUtils.ip_to_v4_int64w src))
-                       (Int64.to_string (FiatUtils.ip_to_v4_int64w src)))
+       Result.Error (Printf.sprintf "Fiat parsing failed; packet was %s\n"
+                       (FiatUtils.cstruct_to_debug_string buf))
     | exception FiatUtils.Fiat_no_ipv6 msg ->
        Result.Error msg
 
@@ -110,7 +108,8 @@ module Marshal = struct
 
   type error = string
 
-  let unsafe_fill ~pseudoheader ~payload t buf options_len =
+  let unsafe_fill_mirage ~pseudoheader ~payload t buf options_len =
+    let pseudoheader = pseudoheader () in
     let data_off = sizeof_tcp + options_len in
     let buf = Cstruct.sub buf 0 data_off in
     set_tcp_src_port buf t.src_port;
@@ -136,7 +135,18 @@ module Marshal = struct
     set_tcp_checksum buf checksum;
     ()
 
-  let into_cstruct ~pseudoheader ~payload t buf =
+  let insert_options options options_frame =
+    match options with
+    |[] -> Ok 0
+    |options ->
+      try
+        Ok (Options.marshal options_frame options)
+      with
+      (* handle the case where we ran out of room in the buffer while attempting
+           to write the options *)
+      | Invalid_argument s -> Error s
+
+  let safe_fill_mirage ~pseudoheader ~payload t buf =
     let check_header_len () =
       if (Cstruct.len buf) < sizeof_tcp then Error "Not enough space for a TCP header"
       else Ok ()
@@ -147,32 +157,68 @@ module Marshal = struct
                  (Cstruct.len buf) header_length)
       else Ok ()
     in
-    let insert_options options_frame =
-      match t.options with
-      |[] -> Ok 0
-      |options ->
-        try
-          Ok (Options.marshal options_frame options)
-        with
-        (* handle the case where we ran out of room in the buffer while attempting
-           to write the options *)
-        | Invalid_argument s -> Error s
-    in
     let options_frame = Cstruct.shift buf sizeof_tcp in
     check_header_len () >>= fun () ->
-    insert_options options_frame >>= fun options_len ->
+    insert_options t.options options_frame >>= fun options_len ->
     check_overall_len (sizeof_tcp + options_len) >>= fun () ->
     let buf = Cstruct.sub buf 0 (sizeof_tcp + options_len) in
-    unsafe_fill ~pseudoheader ~payload t buf options_len;
+    unsafe_fill_mirage ~pseudoheader ~payload t buf options_len;
     Ok (sizeof_tcp + options_len)
 
-  let make_cstruct ~pseudoheader ~payload t =
+  let fiat_tcp_encode src dst len =
+    FiatUtils.make_encoder (fun sz pkt buf -> Fiat4Mirage.fiat_tcp_encode sz pkt src dst len buf)
+
+  let fiat_opts_buf = Cstruct.create 40
+
+  let fill_fiat ~src ~dst ~payload t buf =
+    let p = payload in
+    insert_options t.options fiat_opts_buf >>= fun options_len ->
+    let opts = Cstruct.set_len fiat_opts_buf options_len in
+    let fiat_pkt = Fiat4Mirage.{
+          sourcePort = Int64Word.of_uint t.src_port;
+          destPort = Int64Word.of_uint t.dst_port;
+          seqNumber = Int64Word.of_uint32 (Sequence.to_int32 t.sequence);
+          ackNumber = Int64Word.of_uint32 (Sequence.to_int32 t.ack_number);
+          nS = false; (* Not supported by Mirage *)
+          cWR = false; (* Not supported by Mirage *)
+          eCE = false; (* Not supported by Mirage *)
+          aCK = t.ack;
+          pSH = t.psh;
+          rST = t.rst;
+          sYN = t.syn;
+          fIN = t.fin;
+          windowSize = Int64Word.of_uint t.window;
+          urgentPointer = None; (* Not supported by Mirage *)
+          options0 = FiatUtils.uint32_int64ws_of_cstruct opts;
+          payload = FiatUtils.char_int64ws_of_cstruct p } in
+    let header_len = Tcp_wire.sizeof_tcp + options_len in
+    let total_len = header_len + Cstruct.len p in
+    fiat_tcp_encode
+      (FiatUtils.ipv4_to_bytestring src)
+      (FiatUtils.ipv4_to_bytestring dst)
+      (Int64Word.of_uint total_len)
+      fiat_pkt buf total_len header_len >>= fun () ->
+    Result.Ok header_len
+
+  let into_cstruct ~(src: Ipaddr.t) ~(dst: Ipaddr.t) ~pseudoheader ~payload t buf =
+    if !FiatUtils.udp_encoding_uses_fiat then
+      fill_fiat ~src ~dst ~payload t buf
+    else
+      safe_fill_mirage ~pseudoheader ~payload t buf
+
+  let unsafe_fill ~src ~dst ~pseudoheader ~payload t buf options_len =
+    if !FiatUtils.udp_encoding_uses_fiat then
+      ignore (fill_fiat ~src ~dst ~payload t buf)
+    else
+      unsafe_fill_mirage ~pseudoheader ~payload t buf options_len
+
+  let make_cstruct ~src ~dst ~pseudoheader ~payload t =
     let buf = Cstruct.create (sizeof_tcp + 40) in (* more than 40 bytes of options can't
                                                      be signalled in the length field of
                                                      the tcp header *)
     let options_buf = Cstruct.shift buf sizeof_tcp in
     let options_len = Options.marshal options_buf t.options in
     let buf = Cstruct.set_len buf (sizeof_tcp + options_len) in
-    unsafe_fill ~pseudoheader ~payload t buf options_len;
+    unsafe_fill ~src ~dst ~pseudoheader ~payload t buf options_len;
     buf
 end

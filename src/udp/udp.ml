@@ -62,12 +62,12 @@ module Make(Ip: Mirage_protocols_lwt.IP)(Random:Mirage_random.C) = struct
     let payload_size = Cstruct.lenv bufs in
     let frame, header_len = Ip.allocate_frame t.ip ~dst:dst ~proto:`UDP in
     let frame = Cstruct.set_len frame header_len in
-    let ph =
+    let ph () =
       Ip.pseudoheader t.ip ~dst ~proto:`UDP (payload_size + Udp_wire.sizeof_udp)
     in
     let udp_header = Udp_packet.({ src_port; dst_port; }) in
     let udp_buf =
-      Udp_packet.Marshal.make_cstruct udp_header ~pseudoheader:ph
+      Udp_packet.Marshal.make_cstruct udp_header ~src:(Ip.to_uipaddr (List.hd (Ip.get_ip t.ip))) ~dst:(Ip.to_uipaddr dst) ~pseudoheader:ph
         ~payload:(Cstruct.concat bufs)
     in
     Ip.writev t.ip frame (udp_buf :: bufs) >|= function

@@ -90,14 +90,14 @@ let udp_ipv4_zero_checksum () =
         src; dst;
         proto = Ipv4_packet.Marshal.protocol_to_int proto;
         ttl; options } in
-  let pseudoheader = Ipv4_packet.Marshal.pseudoheader
+  let pseudoheader () = Ipv4_packet.Marshal.pseudoheader
       ~src
       ~dst
       ~proto
       (payload_len + 8) in
   let packet = Cstruct.concat [
       Ipv4_packet.Marshal.make_cstruct ~payload_len:(payload_len + 8) ipv4_header;
-      Udp_packet.Marshal.make_cstruct ~pseudoheader ~payload
+      Udp_packet.Marshal.make_cstruct ~src:(Ipaddr.V4 src) ~dst:(Ipaddr.V4 dst) ~pseudoheader ~payload
         { src_port = 42; dst_port = 42 };
       payload] in
   let (ipv4_header', transport_packet) = unwrap_ipv4 packet in

@@ -96,7 +96,8 @@ module Marshal = struct
           sourceAddress = Int64Word.of_uint32 (Ipaddr.V4.to_int32 t.src);
           destAddress = Int64Word.of_uint32 (Ipaddr.V4.to_int32 t.dst);
           options = fiat_options_from_buf t.options } in
-    fiat_ipv4_encode fiat_packet buf
+    let header_len = sizeof_ipv4 + Cstruct.len t.options in
+    fiat_ipv4_encode fiat_packet buf header_len header_len
 
   let fill ~payload_len t buf =
     if !FiatUtils.ipv4_encoding_uses_fiat then fill_fiat ~payload_len t buf

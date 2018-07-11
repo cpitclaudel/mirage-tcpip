@@ -44,6 +44,7 @@ module Unmarshal = struct
 
   let of_cstruct_fiat frame =
     FiatUtils.log "ethif" "Parsing an ethernet frame";
+    (* Printf.printf "ETHIF: %s\n%!" (FiatUtils.cstruct_to_debug_string frame); *)
     match fiat_ethernet_decode frame sizeof_ethernet with
     | Some pkt ->
        let payload = Cstruct.shift frame sizeof_ethernet in
@@ -77,13 +78,32 @@ module Marshal = struct
     set_ethernet_ethertype buf (ethertype_to_int t.ethertype);
     ()
 
+  let ethertype_to_fiat_type (ftype: Ethif_wire.ethertype) =
+    match ftype with
+    | ARP -> Fiat4Mirage.ARP
+    | IPv4 -> Fiat4Mirage.IP
+    | IPv6 -> Fiat4Mirage.IPV6
+
+  let fiat_ethernet_encode = FiatUtils.make_encoder Fiat4Mirage.fiat_ethernet_encode
+
+  let fill_fiat (t: t) buf =
+    let fiat_pkt = Fiat4Mirage.{
+          source = FiatUtils.bytestring_of_bytes (Macaddr.to_bytes t.source);
+          destination = FiatUtils.bytestring_of_bytes (Macaddr.to_bytes t.destination);
+          ethType = fiat_ethernet_type_to_enum (ethertype_to_fiat_type t.ethertype)
+                   } in
+    fiat_ethernet_encode fiat_pkt buf sizeof_ethernet sizeof_ethernet
+
+  let fill t buf =
+    if !FiatUtils.ethif_encoding_uses_fiat then fill_fiat t buf
+    else (check_len buf >>= fun () -> Result.Ok (unsafe_fill t buf))
+
   let into_cstruct t buf =
-    check_len buf >>= fun () ->
-    Ok (unsafe_fill t buf)
+    fill t buf
 
   let make_cstruct t =
     let buf = Cstruct.create sizeof_ethernet in
     Cstruct.memset buf 0x00; (* can be removed in the future *)
-    unsafe_fill t buf;
+    ignore (into_cstruct t buf);
     buf
 end

@@ -121,7 +121,7 @@ module Marshal = struct
     else Ok ()
 
   (* call only with bufs that are sure to be large enough (>= 24 bytes) *)
-  let unsafe_fill t buf =
+  let unsafe_fill_mirage t buf =
     let smac = Macaddr.to_bytes t.sha in
     let dmac = Macaddr.to_bytes t.tha in
     let spa = Ipaddr.V4.to_int32 t.spa in
@@ -133,15 +133,37 @@ module Marshal = struct
     set_arp_tha dmac 0 buf;
     set_arp_tpa buf tpa
 
+  let fiat_arp_encode = FiatUtils.make_encoder Fiat4Mirage.fiat_arp_encode
+
+  let op_to_fiat_operation (operation: Arpv4_wire.op) =
+    match operation with
+    | Request -> Fiat4Mirage.Request
+    | Reply -> Fiat4Mirage.Reply
+
+  let fill_fiat (t: t) buf =
+    let fiat_pkt = Fiat4Mirage.{
+          (* Mirage's ARP implementation only supports Ethernet and IPv4 *)
+          hardType = fiat_arp_hardtype_to_enum Ethernet;
+          protType = fiat_arp_prottype_to_enum IPv4;
+          operation = fiat_arp_operation_to_enum (op_to_fiat_operation t.op);
+          senderHardAddress = FiatUtils.char_int64ws_of_string (Macaddr.to_bytes t.sha);
+          senderProtAddress = FiatUtils.char_int64ws_of_uint32 (Ipaddr.V4.to_int32 t.spa);
+          targetHardAddress = FiatUtils.char_int64ws_of_string (Macaddr.to_bytes t.tha);
+          targetProtAddress = FiatUtils.char_int64ws_of_uint32 (Ipaddr.V4.to_int32 t.tpa) } in
+    fiat_arp_encode fiat_pkt buf sizeof_arp sizeof_arp
+
+  let fill t buf =
+    if !FiatUtils.arpv4_encoding_uses_fiat then fill_fiat t buf
+    else (unsafe_fill_mirage t buf; Result.Ok ())
+
   let into_cstruct t buf =
     let open Rresult in
     check_len buf >>= fun () ->
-    unsafe_fill t buf;
-    Ok ()
+    fill t buf
 
   let make_cstruct t =
     let buf = Cstruct.create sizeof_arp in
-    unsafe_fill t buf;
+    ignore (fill t buf);
     buf
 
 end

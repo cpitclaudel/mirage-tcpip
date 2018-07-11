@@ -68,16 +68,16 @@ let unmarshal_regression () =
 
 
 let marshal_marshal () =
-  let error_str = Alcotest.result Alcotest.reject Alcotest.string in
+  let error_str = Alcotest.result Alcotest.reject Alcotest.pass in
   let udp = {Udp_packet.src_port = 1; dst_port = 2} in
   let payload = Cstruct.create 100 in
   let buffer = Cstruct.create Udp_wire.sizeof_udp in
   let src = Ipaddr.V4.of_string_exn "127.0.0.1" in
   let dst = Ipaddr.V4.of_string_exn "127.0.0.1" in
-  let pseudoheader = Ipv4_packet.Marshal.pseudoheader ~src ~dst ~proto:`UDP (Cstruct.len buffer + Cstruct.len payload) in
-  Udp_packet.Marshal.into_cstruct ~pseudoheader ~payload udp (Cstruct.shift buffer 1)
+  let pseudoheader () = Ipv4_packet.Marshal.pseudoheader ~src ~dst ~proto:`UDP (Cstruct.len buffer + Cstruct.len payload) in
+  Udp_packet.Marshal.into_cstruct ~src:(Ipaddr.V4 src) ~dst:(Ipaddr.V4 dst) ~pseudoheader ~payload udp (Cstruct.shift buffer 1)
   |> Alcotest.check error_str "Buffer too short" (Error "Not enough space for a UDP header");
-  Udp_packet.Marshal.into_cstruct ~pseudoheader ~payload udp buffer
+  Udp_packet.Marshal.into_cstruct ~src:(Ipaddr.V4 src) ~dst:(Ipaddr.V4 dst) ~pseudoheader ~payload udp buffer
   |> Alcotest.(check (result unit string)) "Buffer big enough for header" (Ok ());
   Udp_packet.Unmarshal.of_cstruct (Ipaddr.V4 src) (Ipaddr.V4 dst) (Cstruct.concat [buffer; payload])
   |> Alcotest.(check (result (pair udp_packet cstruct) string)) "Save and reload" (Ok (udp, payload));

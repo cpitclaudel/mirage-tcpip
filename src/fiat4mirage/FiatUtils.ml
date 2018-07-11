@@ -71,6 +71,16 @@ let cstruct_to_debug_string (buf: Cstruct.t) : string =
     else loop buf (idx + 1) (repr (Cstruct.get_char buf idx) :: acc)
   in "\"" ^ (String.concat "" (loop buf 0 [])) ^ "\""
 
+type bytestring = Int64Word.t ArrayVector.storage_t
+
+let bytestring_to_debug_string (bs: bytestring) : string =
+  let repr c =
+    Int64.to_string c in
+  let rec loop arr idx acc =
+    if idx >= Array.length arr then List.rev acc
+    else loop arr (idx + 1) (repr (arr.(idx)) :: acc)
+  in "[" ^ (String.concat "; " (loop (ArrayVector.to_array bs) 0 [])) ^ "]"
+
 let cstruct_of_char_int64ws (chars: Int64Word.t list) =
   let bytes = Bytes.create (List.length chars) in
   List.iteri (fun idx c -> Bytes.unsafe_set bytes idx (Int64Word.to_char c)) chars;
@@ -81,6 +91,14 @@ let string_of_char_int64ws (chars: Int64Word.t list) =
   List.iteri (fun idx c -> Bytes.unsafe_set str idx (Int64Word.to_char c)) chars;
   Bytes.to_string str
 
+let char_int64ws_of_string (s: string) =
+  let chars = ref [] in
+  for idx = String.length s - 1 downto 0 do
+    let c = String.unsafe_get s idx in
+    chars := Int64Word.of_char c :: !chars
+  done;
+  !chars
+
 let char_int64ws_of_cstruct cstruct =
   let chars = ref [] in
   for idx = Cstruct.len cstruct - 1 downto 0 do
@@ -89,8 +107,6 @@ let char_int64ws_of_cstruct cstruct =
   done;
   !chars
 
-type bytestring = Int64Word.t ArrayVector.storage_t
-
 let bytes_of_bytestring (bs: bytestring) =
   let int64ws = ArrayVector.to_array bs in
   let bytes = Bytes.create (Array.length int64ws) in
@@ -98,6 +114,11 @@ let bytes_of_bytestring (bs: bytestring) =
     Bytes.unsafe_set bytes idx (Int64Word.to_char int64ws.(idx))
   done;
   bytes
+
+let bytestring_of_bytes (bytes: bytes) =
+  let arr = Array.make (Bytes.length bytes) (Int64Word.wzero 8) in
+  Bytes.iteri (fun i c -> arr.(i) <- Int64Word.of_char c) bytes;
+  ArrayVector.of_array arr
 
 let cstruct_blit_from_bytestring bytestring bsoff cstruct csoff len =
   Cstruct.blit_from_bytes (bytes_of_bytestring bytestring) bsoff cstruct csoff len
@@ -120,26 +141,44 @@ let cstruct_of_uint32_int64ws uint32_int64ws =
     uint32_int64ws;
   buf
 
-let uint32_of_char_int64ws chars =
+let uint32_int64ws_of_cstruct buf =
+  assert (Cstruct.len buf mod 4 == 0);
+  let len = Cstruct.len buf / 4 in
+  let int64ws = ref [] in
+  for idx = len - 1 downto 0 do
+    let ui32 = Cstruct.BE.get_uint32 buf (4 * idx) in
+    int64ws := (Int64Word.of_uint32 ui32) :: !int64ws
+  done;
+  !int64ws
+
+let uint32_of_char_int64ws (chars: Int64Word.t list) : Int32.t =
+  let open Int32 in
   match chars with
   | [x0; x1; x2; x3] ->
-     (* CPC simplify this *)
-     Int64.to_int32
-       (List.fold_left Int64.add Int64.zero
-                       (List.map (fun (x, s) -> Int64.shift_left x (8 * s))
-                                 [(x0, 3); (x1, 2); (x2, 1); (x3, 0)]))
+     add (shift_left (Int64Word.to_int32 x0) 24)
+       (add (shift_left (Int64Word.to_int32 x1) 16)
+          (add (shift_left (Int64Word.to_int32 x2) 8)
+             (Int64Word.to_int32 x3)))
   | _ -> failwith "uint32_of_char_int64ws"
+
+let char_int64ws_of_uint32 ui32 =
+  let open Int64 in
+  let w64 = Int64Word.of_uint32 ui32 in
+  let mask u = logand u 0xffL in
+  [mask (shift_right w64 24);
+   mask (shift_right w64 16);
+   mask (shift_right w64 8);
+   mask (shift_right w64 0)]
 
 exception Fiat_parsing_failed
 exception Fiat_incorrect_value
 exception Unsupported_by_mirage
 
 let make_encoder (encoder: int -> 'a -> bytestring -> bytestring option) =
-  fun (pkt: 'a) (cstruct: Cstruct.t) ->
-  let bs_len = Cstruct.len cstruct in
-  let bytestring = ArrayVector.of_array (Array.make bs_len (Int64Word.wzero 8)) in
-  match encoder bs_len pkt bytestring with
-  | Some bytestring -> cstruct_blit_from_bytestring bytestring 0 cstruct 0 bs_len; Result.Ok ()
+  fun (pkt: 'a) (cstruct: Cstruct.t) full_len blit_len ->
+  let bytestring = ArrayVector.of_array (Array.make full_len (Int64Word.wzero 8)) in
+  match encoder full_len pkt bytestring with
+  | Some bytestring -> cstruct_blit_from_bytestring bytestring 0 cstruct 0 blit_len; Result.Ok ()
   | None -> Result.Error "Fiat encoding failed"
 
 let make_decoder (decoder: int -> bytestring -> 'a) =
@@ -147,9 +186,9 @@ let make_decoder (decoder: int -> bytestring -> 'a) =
 
 exception Fiat_no_ipv6 of string
 
-let ip_to_v4_int64w ip =
+let ipv4_to_bytestring ip =
   match Ipaddr.to_v4 ip with
-  | Some v4 -> Int64Word.of_uint32 (Ipaddr.V4.to_int32 v4)
+  | Some v4 -> ArrayVector.of_array (Array.of_list (char_int64ws_of_uint32 (Ipaddr.V4.to_int32 v4)))
   | None -> raise (Fiat_no_ipv6 "Fiat doesn't support IPv6")
 
 (* (* Set to `true` to raise an error if fiat value doesn't match *) *)

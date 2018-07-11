@@ -25,8 +25,8 @@ module Marshal : sig
       It does not write [pseudoheader] or [payload] into the buffer,
       but requires them to calculate the correct checksum. *)
   val into_cstruct :
-    pseudoheader:Cstruct.t  ->
-    payload:Cstruct.t       ->
+    src:Ipaddr.t -> dst:Ipaddr.t -> pseudoheader:(unit -> Cstruct.t) ->
+    payload:Cstruct.t ->
     t -> Cstruct.t ->
     (unit, error) result
 
@@ -36,5 +36,5 @@ module Marshal : sig
       [payload] and [pseudoheader] are not directly represented in the output,
       and are required for correct computation of the UDP checksum only.
       The checksum will be properly set to reflect the pseudoheader, header, and payload. *)
-  val make_cstruct : pseudoheader:Cstruct.t -> payload:Cstruct.t -> t -> Cstruct.t
+  val make_cstruct : src:Ipaddr.t -> dst:Ipaddr.t -> pseudoheader:(unit -> Cstruct.t) -> payload:Cstruct.t -> t -> Cstruct.t
 end

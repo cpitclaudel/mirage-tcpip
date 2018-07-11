@@ -63,9 +63,12 @@ module Make (Ip:Mirage_protocols_lwt.IP) = struct
     let frame, header_len = Ip.allocate_frame ip ~dst ~proto:`TCP in
     (* Shift this out by the combined ethernet + IP header sizes *)
     let tcp_buf = Cstruct.shift frame header_len in
-    let pseudoheader = Ip.pseudoheader ip ~dst ~proto:`TCP
+    let pseudoheader () = Ip.pseudoheader ip ~dst ~proto:`TCP
       (Tcp_wire.sizeof_tcp + Options.lenv options + Cstruct.len payload) in
-    match Tcp_packet.Marshal.into_cstruct header tcp_buf ~pseudoheader ~payload with
+    match Tcp_packet.Marshal.into_cstruct
+            ~src:(Ip.to_uipaddr (List.hd (Ip.get_ip ip)))
+            ~dst:(Ip.to_uipaddr dst)
+            header tcp_buf ~pseudoheader ~payload with
     | Error s ->
       Log.warn (fun l -> l "Error writing TCP packet header: %s" s);
       Lwt.fail (Failure ("Tcp_packet.Marshal.into_cstruct: " ^ s))

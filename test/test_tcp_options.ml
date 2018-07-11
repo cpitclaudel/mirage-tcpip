@@ -178,7 +178,7 @@ let test_marshal_into_cstruct () =
     {Ipv4_packet.src; dst; proto = 6; ttl = 64; options = Cstruct.create 0}
   in
   let payload = Cstruct.of_string "ab" in
-  let pseudoheader =
+  let pseudoheader () =
     Ipv4_packet.Marshal.pseudoheader ~src ~dst ~proto:`TCP
       (Tcp.Tcp_wire.sizeof_tcp + options_size + Cstruct.len payload)
   in
@@ -198,7 +198,7 @@ let test_marshal_into_cstruct () =
       dst_port = 6667;
     }
   in
-  Tcp.Tcp_packet.Marshal.into_cstruct ~pseudoheader ~payload packet buf
+  Tcp.Tcp_packet.Marshal.into_cstruct ~src:(Ipaddr.V4 src) ~dst:(Ipaddr.V4 dst) ~pseudoheader ~payload packet buf
   |> Alcotest.(check (result int string)) "correct size written"
     (Ok (Cstruct.len buf));
   let raw =Cstruct.concat [buf; payload]  in
@@ -217,7 +217,7 @@ let test_marshal_into_cstruct () =
     just_options generated_options;
   (* Now try with make_cstruct *)
   let headers =
-    Tcp.Tcp_packet.Marshal.make_cstruct ~pseudoheader ~payload packet
+    Tcp.Tcp_packet.Marshal.make_cstruct ~src:(Ipaddr.V4 src) ~dst:(Ipaddr.V4 dst) ~pseudoheader ~payload packet
   in
   let raw =Cstruct.concat [headers; payload]  in
   Ipv4_packet.Unmarshal.verify_transport_checksum ~proto:`TCP ~ipv4_header
@@ -235,7 +235,7 @@ let test_marshal_without_padding () =
     {Ipv4_packet.src; dst; proto = 6; ttl = 64; options = Cstruct.create 0}
   in
   let payload = Cstruct.of_string "\x02\x04\x05\xb4" in
-  let pseudoheader =
+  let pseudoheader () =
     Ipv4_packet.Marshal.pseudoheader ~src ~dst ~proto:`TCP
       (Tcp.Tcp_wire.sizeof_tcp + options_size + Cstruct.len payload)
   in
@@ -255,7 +255,7 @@ let test_marshal_without_padding () =
       dst_port = 6667;
     }
   in
-  Tcp.Tcp_packet.Marshal.into_cstruct ~pseudoheader ~payload packet buf
+  Tcp.Tcp_packet.Marshal.into_cstruct ~src:(Ipaddr.V4 src) ~dst:(Ipaddr.V4 dst) ~pseudoheader ~payload packet buf
   |> Alcotest.(check (result int string)) "correct size written"
     (Ok (Cstruct.len buf));
   let raw =Cstruct.concat [buf; payload]  in

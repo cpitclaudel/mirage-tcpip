@@ -34,7 +34,8 @@ module Marshal : sig
       the buffer supplied is too small to write the entire header, an error is
       returned. *)
   val into_cstruct :
-    pseudoheader:Cstruct.t ->
+    src:Ipaddr.t -> dst:Ipaddr.t ->
+    pseudoheader:(unit -> Cstruct.t) ->
     payload:Cstruct.t      ->
     t -> Cstruct.t ->
     (int, error) result
@@ -46,5 +47,5 @@ module Marshal : sig
       A variable amount of memory (at least 20 bytes, and at most 60) will be allocated, but
       [] is not represented in the output.  The checksum will be properly
       set to reflect the pseudoheader, header, options, and payload. *)
-  val make_cstruct : pseudoheader:Cstruct.t -> payload:Cstruct.t -> t -> Cstruct.t
+  val make_cstruct : src:Ipaddr.t -> dst:Ipaddr.t -> pseudoheader:(unit -> Cstruct.t) -> payload:Cstruct.t -> t -> Cstruct.t
 end
