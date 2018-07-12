@@ -201,13 +201,13 @@ module Marshal = struct
     Result.Ok header_len
 
   let into_cstruct ~(src: Ipaddr.t) ~(dst: Ipaddr.t) ~pseudoheader ~payload t buf =
-    if !FiatUtils.udp_encoding_uses_fiat then
+    if !FiatUtils.tcp_encoding_uses_fiat then
       fill_fiat ~src ~dst ~payload t buf
     else
       safe_fill_mirage ~pseudoheader ~payload t buf
 
   let unsafe_fill ~src ~dst ~pseudoheader ~payload t buf options_len =
-    if !FiatUtils.udp_encoding_uses_fiat then
+    if !FiatUtils.tcp_encoding_uses_fiat then
       ignore (fill_fiat ~src ~dst ~payload t buf)
     else
       unsafe_fill_mirage ~pseudoheader ~payload t buf options_len
