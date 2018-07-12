@@ -171,6 +171,7 @@ module Marshal = struct
   let fiat_opts_buf = Cstruct.create 40
 
   let fill_fiat ~src ~dst ~payload t buf =
+    FiatUtils.log "tcp" "Encoding a TCP segment";
     let p = payload in
     insert_options t.options fiat_opts_buf >>= fun options_len ->
     let opts = Cstruct.set_len fiat_opts_buf options_len in
