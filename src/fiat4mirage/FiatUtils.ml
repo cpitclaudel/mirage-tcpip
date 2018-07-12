@@ -107,11 +107,12 @@ let char_int64ws_of_cstruct cstruct =
   done;
   !chars
 
-let bytes_of_bytestring (bs: bytestring) =
+let bytes_of_bytestring ?(start = 0) ?(len = max_int) (bs: bytestring) =
   let int64ws = ArrayVector.to_array bs in
-  let bytes = Bytes.create (Array.length int64ws) in
-  for idx = 0 to Array.length int64ws - 1 do
-    Bytes.unsafe_set bytes idx (Int64Word.to_char int64ws.(idx))
+  let len = min len (Array.length int64ws - start) in
+  let bytes = Bytes.create len in
+  for idx = 0 to len - 1 do
+    Bytes.unsafe_set bytes idx (Int64Word.to_char int64ws.(start + idx))
   done;
   bytes
 
@@ -121,7 +122,7 @@ let bytestring_of_bytes (bytes: bytes) =
   ArrayVector.of_array arr
 
 let cstruct_blit_from_bytestring bytestring bsoff cstruct csoff len =
-  Cstruct.blit_from_bytes (bytes_of_bytestring bytestring) bsoff cstruct csoff len
+  Cstruct.blit_from_bytes (bytes_of_bytestring ~start:bsoff ~len:len bytestring) 0 cstruct csoff len
 
 let bytestring_of_cstruct buf =
   let int64ws = Array.make (Cstruct.len buf) (Int64Word.wzero 8) in
@@ -177,9 +178,13 @@ exception Unsupported_by_mirage
 let make_encoder (encoder: int -> 'a -> bytestring -> bytestring option) =
   fun (pkt: 'a) (cstruct: Cstruct.t) full_len blit_len ->
   let bytestring = ArrayVector.of_array (Array.make full_len (Int64Word.wzero 8)) in
-  match encoder full_len pkt bytestring with
-  | Some bytestring -> cstruct_blit_from_bytestring bytestring 0 cstruct 0 blit_len; Result.Ok ()
-  | None -> Result.Error "Fiat encoding failed"
+  if blit_len > Cstruct.len cstruct then
+    Result.Error "Not enough space"
+  else
+    match encoder full_len pkt bytestring with
+    | Some bytestring ->
+       cstruct_blit_from_bytestring bytestring 0 cstruct 0 blit_len; Result.Ok ()
+    | None -> Result.Error "Fiat encoding failed"
 
 let make_decoder (decoder: int -> bytestring -> 'a) =
   fun cstruct -> decoder (Cstruct.len cstruct) (bytestring_of_cstruct cstruct)

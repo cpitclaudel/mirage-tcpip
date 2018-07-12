@@ -113,14 +113,14 @@ module Marshal = struct
           sourcePort0 = Int64Word.of_uint t.src_port;
           destPort0 = Int64Word.of_uint t.dst_port;
           payload0 = FiatUtils.char_int64ws_of_cstruct p } in
-    Printf.printf "Calling with %s %s %s { %s %s %s } into %s\n"
-      (FiatUtils.bytestring_to_debug_string (FiatUtils.ipv4_to_bytestring src))
-      (FiatUtils.bytestring_to_debug_string (FiatUtils.ipv4_to_bytestring dst))
-      (Int64.to_string (Int64Word.of_uint (Udp_wire.sizeof_udp + Cstruct.len payload)))
-      (Int64.to_string fiat_pkt.sourcePort0)
-      (Int64.to_string fiat_pkt.destPort0)
-      (FiatUtils.bytestring_to_debug_string (FiatUtils.bytestring_of_cstruct payload))
-      (FiatUtils.bytestring_to_debug_string (FiatUtils.bytestring_of_cstruct udp_buf));
+    (* Printf.printf "Calling with %s %s %s { %s %s %s } into %s\n"
+     *   (FiatUtils.bytestring_to_debug_string (FiatUtils.ipv4_to_bytestring src))
+     *   (FiatUtils.bytestring_to_debug_string (FiatUtils.ipv4_to_bytestring dst))
+     *   (Int64.to_string (Int64Word.of_uint (Udp_wire.sizeof_udp + Cstruct.len payload)))
+     *   (Int64.to_string fiat_pkt.sourcePort0)
+     *   (Int64.to_string fiat_pkt.destPort0)
+     *   (FiatUtils.bytestring_to_debug_string (FiatUtils.bytestring_of_cstruct payload))
+     *   (FiatUtils.bytestring_to_debug_string (FiatUtils.bytestring_of_cstruct udp_buf)); *)
     let total_len = Udp_wire.sizeof_udp + Cstruct.len payload in
     fiat_udp_encode
       (FiatUtils.ipv4_to_bytestring src)
