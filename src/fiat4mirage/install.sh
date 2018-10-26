@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 SRC=/home/clement/documents/mit/plv/fiat/src/Narcissus/Examples/NetworkStack
-DST=/build/mirage-popl-2018/mirage-tcpip/src/fiat4mirage
+DST=/home/clement/documents/mit/plv/mirage-popl-2018/mirage-tcpip/src/fiat4mirage
 # Don't install the mli: it's broken
 # Extraction bugs:
 # * Extract Constant […] doesn't work for Nat.[…]
