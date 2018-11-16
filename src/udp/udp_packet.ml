@@ -10,6 +10,9 @@ let equal {src_port; dst_port} q =
 let pp fmt t =
   Format.fprintf fmt "UDP port %d -> %d" t.src_port t.dst_port
 
+let _ =
+  CstructBytestring.checksum := Tcpip_checksum.ones_complement
+
 module Unmarshal = struct
 
   type error = string

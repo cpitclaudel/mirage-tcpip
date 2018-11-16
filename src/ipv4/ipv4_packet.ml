@@ -22,6 +22,9 @@ let equal {src; dst; proto; ttl; options} q =
   ttl = q.ttl &&
   Cstruct.equal options q.options
 
+let _ =
+  CstructBytestring.checksum := Tcpip_checksum.ones_complement
+
 module Marshal = struct
   open Ipv4_wire
 

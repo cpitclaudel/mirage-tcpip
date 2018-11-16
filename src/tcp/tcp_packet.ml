@@ -29,6 +29,9 @@ let pp fmt t =
     Sequence.pp t.sequence Sequence.pp t.ack_number
     t.ack t.rst t.syn t.fin t.window Options.pps t.options
 
+let _ =
+  CstructBytestring.checksum := Tcpip_checksum.ones_complement
+
 module Unmarshal = struct
   open Rresult
 
