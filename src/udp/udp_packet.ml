@@ -47,11 +47,11 @@ module Unmarshal = struct
     match fiat_udp_decode buf
             (FiatUtils.ipv4_to_bytestring src)
             (FiatUtils.ipv4_to_bytestring dst)
-            (Int64Word.of_uint (Cstruct.len buf)) with
+            (Int64Word.of_int (Cstruct.len buf)) with
     | Some (pkt: Fiat4Mirage.uDP_Packet) ->
        let src_port = Int64Word.to_int pkt.sourcePort0 in
        let dst_port = Int64Word.to_int pkt.destPort0 in
-       Result.Ok ({ src_port; dst_port }, FiatUtils.cstruct_of_char_int64ws pkt.payload0)
+       Result.Ok ({ src_port; dst_port }, FiatUtils.cstruct_of_payload pkt.payload0)
     | None ->
        Result.Error (Printf.sprintf "Fiat parsing failed; packet was %s\n" (FiatUtils.cstruct_to_debug_string buf))
     | exception FiatUtils.Fiat_no_ipv6 msg ->
@@ -109,10 +109,9 @@ module Marshal = struct
   let fill_fiat ~src ~dst ~payload t udp_buf =
     let p = payload in
     let fiat_pkt = Fiat4Mirage.{
-          (* Mirage's ARP implementation only supports Ethernet and IPv4 *)
-          sourcePort0 = Int64Word.of_uint t.src_port;
-          destPort0 = Int64Word.of_uint t.dst_port;
-          payload0 = FiatUtils.char_int64ws_of_cstruct p } in
+          sourcePort0 = Int64Word.of_uint16 t.src_port;
+          destPort0 = Int64Word.of_uint16 t.dst_port;
+          payload0 = FiatUtils.payload_of_cstruct p } in
     (* Printf.printf "Calling with %s %s %s { %s %s %s } into %s\n"
      *   (FiatUtils.bytestring_to_debug_string (FiatUtils.ipv4_to_bytestring src))
      *   (FiatUtils.bytestring_to_debug_string (FiatUtils.ipv4_to_bytestring dst))
@@ -125,7 +124,7 @@ module Marshal = struct
     fiat_udp_encode
       (FiatUtils.ipv4_to_bytestring src)
       (FiatUtils.ipv4_to_bytestring dst)
-      (Int64Word.of_uint total_len)
+      (Int64Word.of_int total_len)
       fiat_pkt udp_buf total_len Udp_wire.sizeof_udp
 
   let into_cstruct ~(src: Ipaddr.t) ~(dst: Ipaddr.t) ~pseudoheader ~payload t udp_buf =

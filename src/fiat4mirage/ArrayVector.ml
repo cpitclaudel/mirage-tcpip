@@ -27,6 +27,13 @@ let throw_if_stale (fn: string) (arr: 'a storage_t) =
     failwith (Printf.sprintf "ArrayVector: Array version mismatch in '%s': %d != %d."
                 fn arr.version !(arr.latest_version))
 
+let incr_version arr data =
+  let version = Pervasives.succ !(arr.latest_version) in
+  arr.latest_version := version;
+  { version = version;
+    latest_version = arr.latest_version;
+    data = data }
+
 let length (arr: 'a storage_t) =
   Array.length arr.data
 
@@ -38,37 +45,40 @@ let tl (_: int) (arr: 'a storage_t) : 'a storage_t =
   throw_if_stale "tl" arr;
   of_array (Array.init (Array.length arr.data - 1) (fun i -> arr.data.(i + 1)))
 
+let rec index' x arr i bound =
+  if i >= bound then None
+  else if arr.(i) = x then Some i
+  else index' x arr (i + 1) bound
+
 let index (_: int) (_: int) (x: 'a) (arr: 'a storage_t) : idx_t option =
   throw_if_stale "index" arr;
-  let rec loop x arr i =
-    if i >= Array.length arr then None
-    else if arr.(i) = x then Some i
-    else loop x arr (i + 1)
-  in loop x arr.data 0
+  index' x arr.data 0 (Array.length arr.data)
 
-let nth _ (arr: 'a storage_t) (idx: idx_t) : 'a =
+let nth' (arr: 'a storage_t) (idx: idx_t) : 'a =
   throw_if_stale "nth" arr;
   Array.unsafe_get arr.data idx
 
-let nth_opt _ (arr: 'a storage_t) (idx: idx_t) : 'a option =
+let nth _ (arr: 'a storage_t) (idx: idx_t) : 'a =
+  nth' arr idx
+
+let nth_opt' (arr: 'a storage_t) (idx: idx_t) : 'a option =
   throw_if_stale "nth_opt" arr;
   if idx < Array.length arr.data then
     Some (Array.unsafe_get arr.data idx)
   else None
 
-let incr_version arr =
-  let version = Pervasives.succ !(arr.latest_version) in
-  arr.latest_version := version;
-  { version = version;
-    latest_version = arr.latest_version;
-    data = arr.data }
+let nth_opt _ (arr: 'a storage_t) (idx: idx_t) : 'a option =
+  nth_opt' arr idx
 
-let set_nth _ (arr: 'a storage_t) (idx: idx_t) (x: 'a) : 'a storage_t =
+let set_nth' (arr: 'a storage_t) (idx: idx_t) (x: 'a) : 'a storage_t =
   throw_if_stale "set_nth" arr;
   Array.unsafe_set arr.data idx x;
-  incr_version arr
+  incr_version arr arr.data
 
-let fold_left_pair (f: 'a -> 'a -> 'b -> 'a) _ n (arr: 'a storage_t) (init: 'b) (pad: 'a) =
+let set_nth _ (arr: 'a storage_t) (idx: idx_t) (x: 'a) : 'a storage_t =
+  set_nth' arr idx x
+
+let fold_left16 (f: 'a -> 'a -> 'b -> 'b) _ n (arr: 'a storage_t) (init: 'b) (pad: 'a) =
   (* Printf.printf "Looping up to (min %d %d)\n%!" n (Array.length arr.data); *)
   let rec loop f arr acc pad len offset =
     if offset >= len then
@@ -82,29 +92,24 @@ let fold_left_pair (f: 'a -> 'a -> 'b -> 'a) _ n (arr: 'a storage_t) (init: 'b) 
       loop f arr acc pad len (offset + 2)
   in loop f arr init pad (min n (Array.length arr.data)) 0
 
-let list_of_range _ (from: int) (len: int) (arr: 'a storage_t) =
-  throw_if_stale "list_of_range" arr;
-  let rec loop from idx data acc =
-    if idx < from then
-      acc
-    else
-      loop from (idx - 1) data (Array.unsafe_get data idx :: acc)
-  in loop from (min (from + len) (length arr) - 1) arr.data []
+let array_of_range _ (from: int) (len: int) (arr: 'a storage_t) =
+  throw_if_stale "array_of_range" arr;
+  of_array (Array.sub arr.data from (min len (length arr - from)))
 
-let rec blit_list_unsafe start list data =
-  match list with
-  | [] -> data
-  | h :: t ->
-     Array.unsafe_set data start h;
-     blit_list_unsafe (start + 1) t data
+let rec blit_arr_unsafe start len src dst =
+  for idx = 0 to len do
+    Array.unsafe_set dst (start + idx) (Array.unsafe_get src idx)
+  done
 
-let blit_list _ start list arr =
-  throw_if_stale "list_of_range" arr;
-  let len = List.length list in
-  if (start + len) <= length arr then
-    let data' = blit_list_unsafe start list arr.data in
-    Some (incr_version { arr with data = data' }, len)
-  else None
+let blit_array _ _ start src dst =
+  throw_if_stale "blit_array" src;
+  throw_if_stale "blit_array" dst;
+  let len = length src in
+  let idx' = start + len in
+  if idx' <= length dst then (
+    blit_arr_unsafe start len src.data dst.data;
+    Some (incr_version dst dst.data, idx')
+  ) else None
 
 let append _ _ (arr1: 'a storage_t) (arr2: 'a storage_t) : 'a storage_t =
   throw_if_stale "append" arr1;

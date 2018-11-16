@@ -79,10 +79,10 @@ module Unmarshal = struct
     match fiat_tcp_decode buf
             (FiatUtils.ipv4_to_bytestring src)
             (FiatUtils.ipv4_to_bytestring dst)
-            (Int64Word.of_uint (Cstruct.len buf)) with
+            (Int64Word.of_int (Cstruct.len buf)) with
     | Some (pkt: Fiat4Mirage.tCP_Packet) ->
-       let sequence = pkt.seqNumber |> Int64Word.to_int32 |> Sequence.of_int32 in
-       let ack_number = pkt.ackNumber |> Int64Word.to_int32 |> Sequence.of_int32 in
+       let sequence = pkt.seqNumber |> Int64Word.to_uint32 |> Sequence.of_int32 in
+       let ack_number = pkt.ackNumber |> Int64Word.to_uint32 |> Sequence.of_int32 in
        let urg = (match pkt.urgentPointer with Some _ -> true | None -> false) in
        let ack, psh, rst, syn, fin = pkt.aCK, pkt.pSH, pkt.rST, pkt.sYN, pkt.fIN in
        let window = Int64Word.to_int pkt.windowSize in
@@ -91,7 +91,7 @@ module Unmarshal = struct
        Options.unmarshal (FiatUtils.cstruct_of_uint32_int64ws pkt.options0) >>= fun options ->
        Result.Ok ({ urg; ack; psh; rst; syn; fin; window; options;
                     sequence; ack_number; src_port; dst_port },
-                  FiatUtils.cstruct_of_char_int64ws pkt.payload)
+                  FiatUtils.cstruct_of_payload pkt.payload)
     | None ->
        Result.Error (Printf.sprintf "Fiat parsing failed; packet was %s\n"
                        (FiatUtils.cstruct_to_debug_string buf))
@@ -176,8 +176,8 @@ module Marshal = struct
     insert_options t.options fiat_opts_buf >>= fun options_len ->
     let opts = Cstruct.set_len fiat_opts_buf options_len in
     let fiat_pkt = Fiat4Mirage.{
-          sourcePort = Int64Word.of_uint t.src_port;
-          destPort = Int64Word.of_uint t.dst_port;
+          sourcePort = Int64Word.of_int t.src_port;
+          destPort = Int64Word.of_int t.dst_port;
           seqNumber = Int64Word.of_uint32 (Sequence.to_int32 t.sequence);
           ackNumber = Int64Word.of_uint32 (Sequence.to_int32 t.ack_number);
           nS = false; (* Not supported by Mirage *)
@@ -188,16 +188,16 @@ module Marshal = struct
           rST = t.rst;
           sYN = t.syn;
           fIN = t.fin;
-          windowSize = Int64Word.of_uint t.window;
+          windowSize = Int64Word.of_int t.window;
           urgentPointer = None; (* Not supported by Mirage *)
           options0 = FiatUtils.uint32_int64ws_of_cstruct opts;
-          payload = FiatUtils.char_int64ws_of_cstruct p } in
+          payload = FiatUtils.payload_of_cstruct p } in
     let header_len = Tcp_wire.sizeof_tcp + options_len in
     let total_len = header_len + Cstruct.len p in
     fiat_tcp_encode
       (FiatUtils.ipv4_to_bytestring src)
       (FiatUtils.ipv4_to_bytestring dst)
-      (Int64Word.of_uint total_len)
+      (Int64Word.of_int total_len)
       fiat_pkt buf total_len header_len >>= fun () ->
     Result.Ok header_len
 

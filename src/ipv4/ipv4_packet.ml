@@ -84,14 +84,14 @@ module Marshal = struct
      *   (Int32.to_string (Ipaddr.V4.to_int32 t.dst))
      *   (Ipaddr.V4.to_string t.dst); *)
     let fiat_packet = Fiat4Mirage.{
-          totalLength = Int64Word.of_uint (sizeof_ipv4 + options_len + payload_len);
+          totalLength = Int64Word.of_int (sizeof_ipv4 + options_len + payload_len);
           (* Mirage doesn't support the following 4 fields: *)
           iD = Int64Word.wzero 3;
           dF = false;
           mF = false;
           fragmentOffset = Int64Word.wzero 13;
           (* </> *)
-          tTL = Int64Word.of_uint t.ttl;
+          tTL = Int64Word.of_int t.ttl;
           protocol = Fiat4Mirage.fiat_ipv4_protocol_to_enum (protocol_to_fiat_protocol t.proto);
           sourceAddress = Int64Word.of_uint32 (Ipaddr.V4.to_int32 t.src);
           destAddress = Int64Word.of_uint32 (Ipaddr.V4.to_int32 t.dst);
@@ -200,7 +200,7 @@ module Unmarshal = struct
          let optbuf = Cstruct.create (4 * (List.length opts)) in
          List.iteri (fun idx ui32w64 ->
              Cstruct.BE.set_uint32 optbuf (4 * idx)
-               (Int64Word.to_int32 ui32w64)) opts;
+               (Int64Word.to_uint32 ui32w64)) opts;
          optbuf in
        let options = buf_from_fiat_options header.options in
        let payload_len = (Int64Word.to_int header.totalLength) - header_len in
@@ -209,8 +209,8 @@ module Unmarshal = struct
         * Printf.printf "SRC: %s\nDST: %s\n"
         *   (Int64Word.bits header.sourceAddress)
         *   (Int64Word.bits header.destAddress); *)
-       Result.Ok ({src = Ipaddr.V4.of_int32 (Int64Word.to_int32 header.sourceAddress);
-                   dst = Ipaddr.V4.of_int32 (Int64Word.to_int32 header.destAddress);
+       Result.Ok ({src = Ipaddr.V4.of_int32 (Int64Word.to_uint32 header.sourceAddress);
+                   dst = Ipaddr.V4.of_int32 (Int64Word.to_uint32 header.destAddress);
                    proto = Marshal.protocol_to_int (fiat_protocol_to_protocol proto);
                    ttl = Int64Word.to_int header.tTL; options; },
                   Cstruct.sub buf header_len payload_len)

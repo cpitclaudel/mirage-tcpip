@@ -55,6 +55,21 @@ let compSpec2Type _ _ =
 let id x =
   x
 
+type ('a, 'p) sigT =
+| ExistT of 'a * 'p
+
+(** val projT1 : ('a1, 'a2) sigT -> 'a1 **)
+
+let projT1 = function
+| ExistT (a, _) -> a
+
+(** val projT2 : ('a1, 'a2) sigT -> 'a2 **)
+
+let projT2 = function
+| ExistT (_, h) -> h
+
+
+
 type uint =
 | Nil
 | D0 of uint
@@ -93,6 +108,26 @@ let norm = function
              | Nil -> Pos (D0 Nil)
              | x -> Neg x)
 
+(** val revapp : uint -> uint -> uint **)
+
+let rec revapp d d' =
+  match d with
+  | Nil -> d'
+  | D0 d0 -> revapp d0 (D0 d')
+  | D1 d0 -> revapp d0 (D1 d')
+  | D2 d0 -> revapp d0 (D2 d')
+  | D3 d0 -> revapp d0 (D3 d')
+  | D4 d0 -> revapp d0 (D4 d')
+  | D5 d0 -> revapp d0 (D5 d')
+  | D6 d0 -> revapp d0 (D6 d')
+  | D7 d0 -> revapp d0 (D7 d')
+  | D8 d0 -> revapp d0 (D8 d')
+  | D9 d0 -> revapp d0 (D9 d')
+
+(** val rev : uint -> uint **)
+
+let rev d =
+  revapp d Nil
 
 module Little =
  struct
@@ -122,7 +157,8 @@ let rec mul = ( * )
 
 (** val sub : OCamlNativeInt.t -> OCamlNativeInt.t -> OCamlNativeInt.t **)
 
-let rec sub = fun n m -> Pervasives.max 0 (n-m)
+let rec sub = fun (x: OCamlNativeInt.t) (y: OCamlNativeInt.t) ->
+if x <= y then 0 else (x - y)
 
 (** val eqb : bool -> bool -> bool **)
 
@@ -366,6 +402,9 @@ module Nat =
 
   (** val to_uint : OCamlNativeInt.t -> uint **)
 
+  let to_uint n0 =
+    rev (to_little_uint n0 (D0 Nil))
+
   (** val of_int : int -> OCamlNativeInt.t option **)
 
   let of_int d =
@@ -374,6 +413,9 @@ module Nat =
     | Neg _ -> None
 
   (** val to_int : OCamlNativeInt.t -> int **)
+
+  let to_int n0 =
+    Pos (to_uint n0)
 
   (** val divmod :
       OCamlNativeInt.t -> OCamlNativeInt.t -> OCamlNativeInt.t ->
@@ -1125,7 +1167,7 @@ type 'a indexBound =
   (* singleton inductive, whose constructor was Build_IndexBound *)
 
 (** val ibound :
-    OCamlNativeInt.t -> 'a1 -> 'a1 ArrayVector.storage_t -> 'a1 indexBound ->
+    OCamlNativeInt.t -> 'a1 -> 'a1 StackVector.t -> 'a1 indexBound ->
     ArrayVector.idx_t **)
 
 let ibound _ _ _ indexBound0 =
@@ -1134,12 +1176,12 @@ let ibound _ _ _ indexBound0 =
 type 'a boundedIndex = { bindex : 'a; indexb : 'a indexBound }
 
 (** val bindex :
-    OCamlNativeInt.t -> 'a1 ArrayVector.storage_t -> 'a1 boundedIndex -> 'a1 **)
+    OCamlNativeInt.t -> 'a1 StackVector.t -> 'a1 boundedIndex -> 'a1 **)
 
 let bindex _ _ x = x.bindex
 
 (** val indexb :
-    OCamlNativeInt.t -> 'a1 ArrayVector.storage_t -> 'a1 boundedIndex -> 'a1
+    OCamlNativeInt.t -> 'a1 StackVector.t -> 'a1 boundedIndex -> 'a1
     indexBound **)
 
 let indexb _ _ x = x.indexb
@@ -1147,8 +1189,7 @@ let indexb _ _ x = x.indexb
 type 'a enumType = ArrayVector.idx_t
 
 (** val boundedIndex_inj_EnumType :
-    OCamlNativeInt.t -> 'a1 ArrayVector.storage_t -> 'a1 boundedIndex -> 'a1
-    enumType **)
+    OCamlNativeInt.t -> 'a1 StackVector.t -> 'a1 boundedIndex -> 'a1 enumType **)
 
 let boundedIndex_inj_EnumType len ta idx =
   ibound (Pervasives.succ len) idx.bindex ta idx.indexb
@@ -1175,21 +1216,13 @@ type char = Int64Word.t
 
 
 
-(** val initialize_Aligned_ByteString :
-    OCamlNativeInt.t -> Int64Word.t ArrayVector.storage_t **)
-
-let rec initialize_Aligned_ByteString n0 =
-  (fun fO fS n -> if n=0 then fO () else fS (n-1))
-    (fun _ -> ArrayVector.empty ())
-    (fun n' -> ArrayVector.cons
-    ((Int64Word.wzero (Pervasives.succ (Pervasives.succ (Pervasives.succ
-       (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-       (Pervasives.succ 0))))))))), n', (initialize_Aligned_ByteString n')))
-    n0
+module ByteBuffer =
+ struct
+ end
 
 type 's alignedEncodeM =
-  char ArrayVector.storage_t -> OCamlNativeInt.t -> 's -> cacheFormat ->
-  ((char ArrayVector.storage_t*OCamlNativeInt.t)*cacheFormat) option
+  CstructBytestring.storage_t -> OCamlNativeInt.t -> 's -> cacheFormat ->
+  ((CstructBytestring.storage_t*OCamlNativeInt.t)*cacheFormat) option
 
 (** val alignedEncode_Nil :
     cache -> OCamlNativeInt.t -> 'a1 alignedEncodeM **)
@@ -1197,25 +1230,13 @@ type 's alignedEncodeM =
 let alignedEncode_Nil _ numBytes v idx _ env =
   if Nat.ltb idx (Pervasives.succ numBytes) then Some ((v,idx),env) else None
 
-(** val setCurrentByte :
-    cache -> OCamlNativeInt.t cacheAdd -> OCamlNativeInt.t -> char
-    alignedEncodeM **)
-
-let setCurrentByte _ cacheAddNat n0 v idx s ce =
-  if Nat.ltb idx n0
-  then Some (((ArrayVector.set_nth n0 v idx s),(Pervasives.succ
-         idx)),(cacheAddNat.addE ce (Pervasives.succ (Pervasives.succ
-                 (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                 (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))))))
-  else None
-
 (** val setByteAt :
     cache -> OCamlNativeInt.t cacheAdd -> OCamlNativeInt.t ->
     OCamlNativeInt.t -> char alignedEncodeM **)
 
 let setByteAt _ cacheAddNat n0 idx' v _ s ce =
   if (<) idx' n0
-  then Some (((ArrayVector.set_nth n0 v idx' s),(Pervasives.succ
+  then Some (((CstructBytestring.set_nth n0 v idx' s),(Pervasives.succ
          idx')),(cacheAddNat.addE ce (Pervasives.succ (Pervasives.succ
                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -1223,28 +1244,15 @@ let setByteAt _ cacheAddNat n0 idx' v _ s ce =
   else None
 
 type 'a alignedDecodeM =
-  char ArrayVector.storage_t -> OCamlNativeInt.t -> cacheDecode ->
+  CstructBytestring.storage_t -> OCamlNativeInt.t -> cacheDecode ->
   (('a*OCamlNativeInt.t)*cacheDecode) option
-
-(** val getCurrentByte :
-    cache -> OCamlNativeInt.t cacheAdd -> OCamlNativeInt.t -> char
-    alignedDecodeM **)
-
-let getCurrentByte _ cacheAddNat n0 v idx c =
-  match ArrayVector.nth_opt n0 v idx with
-  | Some a ->
-    Some ((a,(Pervasives.succ
-      idx)),(cacheAddNat.addD c (Pervasives.succ (Pervasives.succ
-              (Pervasives.succ (Pervasives.succ (Pervasives.succ
-              (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))))))
-  | None -> None
 
 (** val skipCurrentByte :
     cache -> OCamlNativeInt.t cacheAdd -> OCamlNativeInt.t -> unit
     alignedDecodeM **)
 
 let skipCurrentByte _ cacheAddNat n0 v idx c =
-  match ArrayVector.nth_opt n0 v idx with
+  match CstructBytestring.nth_opt n0 v idx with
   | Some _ ->
     Some (((),(Pervasives.succ
       idx)),(cacheAddNat.addD c (Pervasives.succ (Pervasives.succ
@@ -1260,11 +1268,16 @@ let rec getCurrentBytes cache0 cacheAddNat n0 m v idx c =
   (fun fO fS n -> if n=0 then fO () else fS (n-1))
     (fun _ -> Some (((Int64Word.w0),idx),c))
     (fun m' ->
-    match getCurrentByte cache0 cacheAddNat n0 v idx c with
+    match CstructBytestring.nth_opt n0 v idx with
     | Some a ->
+      let a0 = (a,(Pervasives.succ
+        idx)),(cacheAddNat.addD c (Pervasives.succ (Pervasives.succ
+                (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))))))
+      in
       (match getCurrentBytes cache0 cacheAddNat n0 m' v
-               (let _,y = let x,_ = a in x in y) (let _,y = a in y) with
-       | Some a0 ->
+               (let _,y = let x,_ = a0 in x in y) (let _,y = a0 in y) with
+       | Some a1 ->
          Some
            (((Int64Word.append
                (mul m' (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -1273,10 +1286,11 @@ let rec getCurrentBytes cache0 cacheAddNat n0 m v idx c =
                (Pervasives.succ (Pervasives.succ (Pervasives.succ
                (Pervasives.succ (Pervasives.succ (Pervasives.succ
                (Pervasives.succ (Pervasives.succ 0))))))))
-               (let x,_ = let x,_ = a0 in x in x)
-               (let x,_ = let x,_ = a in x in x)),(let _,y = let x,_ = a0 in x
-                                                   in
-                                                   y)),(let _,y = a0 in y))
+               (let x,_ = let x,_ = a1 in x in x)
+               (let x,_ = let x,_ = a0 in x in x)),(let _,y =
+                                                      let x,_ = a1 in x
+                                                    in
+                                                    y)),(let _,y = a1 in y))
        | None -> None)
     | None -> None)
     m
@@ -1288,24 +1302,44 @@ let rec getCurrentBytes cache0 cacheAddNat n0 m v idx c =
 let rec setCurrentBytes cache0 cacheAddNat n0 sz =
   (fun fO fS n -> if n=0 then fO () else fS (n-1))
     (fun _ -> alignedEncode_Nil cache0 n0)
-    (fun sz' v idx s c ->
-    match setCurrentByte cache0 cacheAddNat n0 v idx
-            (Int64Word.split1' (Pervasives.succ (Pervasives.succ
-              (Pervasives.succ (Pervasives.succ (Pervasives.succ
-              (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))))
-              (mul sz' (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                (Pervasives.succ (Pervasives.succ 0))))))))) s) c with
-    | Some a ->
-      setCurrentBytes cache0 cacheAddNat n0 sz'
-        (let x,_ = let x,_ = a in x in x) (let _,y = let x,_ = a in x in y)
-        (Int64Word.split2' (Pervasives.succ (Pervasives.succ (Pervasives.succ
-          (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-          (Pervasives.succ 0))))))))
-          (mul sz' (Pervasives.succ (Pervasives.succ (Pervasives.succ
-            (Pervasives.succ (Pervasives.succ (Pervasives.succ
-            (Pervasives.succ (Pervasives.succ 0))))))))) s) (let _,y = a in y)
-    | None -> None)
+    (fun sz0 v idx w ce ->
+    (fun fO fS n -> if n=0 then fO () else fS (n-1))
+      (fun _ ->
+      if Nat.ltb idx n0
+      then Some (((CstructBytestring.set_nth n0 v idx w),(Pervasives.succ
+             idx)),(cacheAddNat.addE ce (Pervasives.succ (Pervasives.succ
+                     (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                     (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                     0))))))))))
+      else None)
+      (fun _ ->
+      if Nat.ltb idx n0
+      then let a =
+             ((CstructBytestring.set_nth n0 v idx
+                (Int64Word.split1' (Pervasives.succ (Pervasives.succ
+                  (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                  (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                  0))))))))
+                  (mul sz0 (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                    (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                    (Pervasives.succ (Pervasives.succ 0))))))))) w)),(Pervasives.succ
+             idx)),(cacheAddNat.addE ce (Pervasives.succ (Pervasives.succ
+                     (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                     (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                     0)))))))))
+           in
+           setCurrentBytes cache0 cacheAddNat n0 sz0
+             (let x,_ = let x,_ = a in x in x)
+             (let _,y = let x,_ = a in x in y)
+             (Int64Word.split2' (Pervasives.succ (Pervasives.succ
+               (Pervasives.succ (Pervasives.succ (Pervasives.succ
+               (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))))
+               (mul sz0 (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                 (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                 (Pervasives.succ (Pervasives.succ 0))))))))) w)
+             (let _,y = a in y)
+      else None)
+      sz0)
     sz
 
 (** val test_cache : cache **)
@@ -1325,43 +1359,18 @@ type w16 = Int64Word.t
 
 let oneC_plus = Int64Word.onec_plus
 
-(** val add_bytes_into_checksum :
-    Int64Word.t -> Int64Word.t -> w16 -> Int64Word.t **)
+(** val byteBuffer_checksum :
+    OCamlNativeInt.t -> CstructBytestring.storage_t -> w16 **)
 
-let add_bytes_into_checksum b_hi b_lo checksum =
-  let w17 =
-    Int64Word.combine (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ 0)))))))) b_lo (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ (Pervasives.succ 0)))))))) b_hi
-  in
-  oneC_plus (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))))))))))))))) checksum w17
-
-(** val vector_checksum' :
-    OCamlNativeInt.t -> Int64Word.t ArrayVector.storage_t -> w16 **)
-
-let vector_checksum' sz bytes =
-  ArrayVector.fold_left_pair add_bytes_into_checksum sz sz bytes
-    (Int64Word.wzero (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ 0)))))))))))))))))
-    (Int64Word.wzero (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ 0)))))))))
+let byteBuffer_checksum sz bytes =
+  CstructBytestring.checksum_bound sz sz bytes
 
 (** val alignedEncodeVector' :
     cache -> OCamlNativeInt.t -> OCamlNativeInt.t -> OCamlNativeInt.t ->
-    (OCamlNativeInt.t -> 'a1 alignedEncodeM) -> OCamlNativeInt.t -> char
-    ArrayVector.storage_t -> OCamlNativeInt.t -> 'a1 ArrayVector.storage_t ->
-    cacheFormat -> ((char
-    ArrayVector.storage_t*OCamlNativeInt.t)*cacheFormat) option **)
+    (OCamlNativeInt.t -> 'a1 alignedEncodeM) -> OCamlNativeInt.t ->
+    CstructBytestring.storage_t -> OCamlNativeInt.t -> 'a1 StackVector.t ->
+    cacheFormat ->
+    ((CstructBytestring.storage_t*OCamlNativeInt.t)*cacheFormat) option **)
 
 let rec alignedEncodeVector' cache0 n0 n' sz s_format_align numBytes v idx ss env =
   (fun fO fS n -> if n=0 then fO () else fS (n-1))
@@ -1370,7 +1379,7 @@ let rec alignedEncodeVector' cache0 n0 n' sz s_format_align numBytes v idx ss en
     then Some ((v,idx),env)
     else None)
     (fun n'' ->
-    match ArrayVector.nth_opt sz ss n' with
+    match StackVector.nth_opt sz ss n' with
     | Some a ->
       (match s_format_align numBytes v idx a env with
        | Some a0 ->
@@ -1383,7 +1392,7 @@ let rec alignedEncodeVector' cache0 n0 n' sz s_format_align numBytes v idx ss en
 
 (** val alignedEncodeVector :
     cache -> OCamlNativeInt.t -> (OCamlNativeInt.t -> 'a1 alignedEncodeM) ->
-    OCamlNativeInt.t -> 'a1 ArrayVector.storage_t alignedEncodeM **)
+    OCamlNativeInt.t -> 'a1 StackVector.t alignedEncodeM **)
 
 let alignedEncodeVector cache0 sz s_format_align =
   alignedEncodeVector' cache0 sz 0 sz s_format_align
@@ -1398,30 +1407,34 @@ let aligned_option_encode _ encode_Some encode_None sz v idx = function
 
 (** val aligned_decode_enum :
     OCamlNativeInt.t -> cache -> OCamlNativeInt.t cacheAdd -> Int64Word.t
-    ArrayVector.storage_t -> OCamlNativeInt.t -> ArrayVector.idx_t
-    alignedDecodeM **)
+    StackVector.t -> OCamlNativeInt.t -> ArrayVector.idx_t alignedDecodeM **)
 
-let aligned_decode_enum len cache0 cacheAddNat tb n0 v idx c =
-  match getCurrentByte cache0 cacheAddNat n0 v idx c with
+let aligned_decode_enum len _ cacheAddNat tb n0 v idx c =
+  match CstructBytestring.nth_opt n0 v idx with
   | Some a ->
-    (match ArrayVector.index (Pervasives.succ (Pervasives.succ
+    let a0 = (a,(Pervasives.succ
+      idx)),(cacheAddNat.addD c (Pervasives.succ (Pervasives.succ
+              (Pervasives.succ (Pervasives.succ (Pervasives.succ
+              (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))))))
+    in
+    (match StackVector.index (Pervasives.succ (Pervasives.succ
              (Pervasives.succ (Pervasives.succ (Pervasives.succ
              (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))))
-             (Pervasives.succ len) (let x,_ = let x,_ = a in x in x) tb with
-     | Some a0 ->
-       Some ((a0,(let _,y = let x,_ = a in x in y)),(let _,y = a in y))
+             (Pervasives.succ len) (let x,_ = let x,_ = a0 in x in x) tb with
+     | Some a1 ->
+       Some ((a1,(let _,y = let x,_ = a0 in x in y)),(let _,y = a0 in y))
      | None -> None)
   | None -> None
 
 (** val aligned_decode_enumN :
     OCamlNativeInt.t -> OCamlNativeInt.t -> cache -> OCamlNativeInt.t
-    cacheAdd -> Int64Word.t ArrayVector.storage_t -> OCamlNativeInt.t ->
+    cacheAdd -> Int64Word.t StackVector.t -> OCamlNativeInt.t ->
     ArrayVector.idx_t alignedDecodeM **)
 
 let aligned_decode_enumN sz len cache0 cacheAddNat tb n0 v idx c =
   match getCurrentBytes cache0 cacheAddNat n0 sz v idx c with
   | Some a ->
-    (match ArrayVector.index
+    (match StackVector.index
              (mul sz (Pervasives.succ (Pervasives.succ (Pervasives.succ
                (Pervasives.succ (Pervasives.succ (Pervasives.succ
                (Pervasives.succ (Pervasives.succ 0))))))))) (Pervasives.succ
@@ -1475,32 +1488,44 @@ let rec listAlignedDecodeM cache0 m a_decode_align n0 x x0 x1 =
     | None -> None)
     n0
 
-(** val charListAlignedDecodeM :
-    cache -> OCamlNativeInt.t cacheAdd -> OCamlNativeInt.t ->
-    OCamlNativeInt.t -> char list alignedDecodeM **)
+(** val bytebuffer_of_bytebuffer_range :
+    OCamlNativeInt.t -> OCamlNativeInt.t -> OCamlNativeInt.t ->
+    CstructBytestring.storage_t -> (OCamlNativeInt.t,
+    CstructBytestring.storage_t) sigT **)
 
-let charListAlignedDecodeM _ cacheAddNat m len v idx env =
+let bytebuffer_of_bytebuffer_range = (fun sz from len v ->
+    let b = CstructBytestring.slice_range sz from len v in
+    ExistT (CstructBytestring.length b, b))
+
+(** val byteBufferAlignedDecodeM :
+    cache -> OCamlNativeInt.t cacheAdd -> OCamlNativeInt.t ->
+    OCamlNativeInt.t -> (OCamlNativeInt.t, CstructBytestring.storage_t) sigT
+    alignedDecodeM **)
+
+let byteBufferAlignedDecodeM _ cacheAddNat m len v idx env =
   let lastidx = add idx len in
   if (<=) lastidx m
   then Some
-         (((ArrayVector.list_of_range m idx len v),lastidx),(cacheAddNat.addD
-                                                              env
-                                                              (mul
-                                                                (Pervasives.succ
-                                                                (Pervasives.succ
-                                                                (Pervasives.succ
-                                                                (Pervasives.succ
-                                                                (Pervasives.succ
-                                                                (Pervasives.succ
-                                                                (Pervasives.succ
-                                                                (Pervasives.succ
-                                                                0)))))))) len)))
+         (((bytebuffer_of_bytebuffer_range m idx len v),lastidx),(cacheAddNat.addD
+                                                                   env
+                                                                   (mul
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0))))))))
+                                                                    len)))
   else None
 
 (** val alignedEncodeList' :
     cache -> (OCamlNativeInt.t -> 'a1 alignedEncodeM) -> OCamlNativeInt.t ->
-    char ArrayVector.storage_t -> OCamlNativeInt.t -> 'a1 list -> cacheFormat
-    -> ((char ArrayVector.storage_t*OCamlNativeInt.t)*cacheFormat) option **)
+    CstructBytestring.storage_t -> OCamlNativeInt.t -> 'a1 list ->
+    cacheFormat ->
+    ((CstructBytestring.storage_t*OCamlNativeInt.t)*cacheFormat) option **)
 
 let rec alignedEncodeList' cache0 a_format_align sz v idx as0 env =
   match as0 with
@@ -1513,21 +1538,20 @@ let rec alignedEncodeList' cache0 a_format_align sz v idx as0 env =
          (let _,y = let x,_ = a0 in x in y) as' (let _,y = a0 in y)
      | None -> None)
 
-(** val alignedEncodeCharList :
-    cache -> OCamlNativeInt.t cacheAdd -> OCamlNativeInt.t -> char list
-    alignedEncodeM **)
+(** val alignedEncodeByteBuffer :
+    cache -> OCamlNativeInt.t cacheAdd -> OCamlNativeInt.t ->
+    (OCamlNativeInt.t, CstructBytestring.storage_t) sigT alignedEncodeM **)
 
-let alignedEncodeCharList _ cacheAddNat sz v idx chars env =
-  match ArrayVector.blit_list sz idx chars v with
-  | Some p ->
-    let v',len = p in
-    Some
-    ((v',(add idx len)),(cacheAddNat.addE env
-                          (mul (Pervasives.succ (Pervasives.succ
-                            (Pervasives.succ (Pervasives.succ
-                            (Pervasives.succ (Pervasives.succ
-                            (Pervasives.succ (Pervasives.succ 0)))))))) len)))
-  | None -> None
+let alignedEncodeByteBuffer _ cacheAddNat sz2 dst idx src env =
+  let ExistT (len, src0) = src in
+  (match CstructBytestring.blit_buffer len sz2 idx src0 dst with
+   | Some p ->
+     Some
+       (p,(cacheAddNat.addE env
+            (mul (Pervasives.succ (Pervasives.succ (Pervasives.succ
+              (Pervasives.succ (Pervasives.succ (Pervasives.succ
+              (Pervasives.succ (Pervasives.succ 0)))))))) len)))
+   | None -> None)
 
 (** val alignedEncodeList :
     cache -> (OCamlNativeInt.t -> 'a1 alignedEncodeM) -> OCamlNativeInt.t ->
@@ -1536,31 +1560,16 @@ let alignedEncodeCharList _ cacheAddNat sz v idx chars env =
 let alignedEncodeList =
   alignedEncodeList'
 
-(** val vector_checksum_bound' :
-    OCamlNativeInt.t -> OCamlNativeInt.t -> Int64Word.t ArrayVector.storage_t
-    -> w16 **)
-
-let vector_checksum_bound' n0 sz bytes =
-  ArrayVector.fold_left_pair add_bytes_into_checksum sz n0 bytes
-    (Int64Word.wzero (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ 0)))))))))))))))))
-    (Int64Word.wzero (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ 0)))))))))
-
 (** val calculate_IPChecksum : OCamlNativeInt.t -> 'a1 alignedEncodeM **)
 
 let calculate_IPChecksum sz v =
   let checksum =
-    vector_checksum_bound' (Pervasives.succ (Pervasives.succ (Pervasives.succ
+    CstructBytestring.checksum_bound (Pervasives.succ (Pervasives.succ
       (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
       (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
       (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
       (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ 0)))))))))))))))))))) sz v
+      (Pervasives.succ (Pervasives.succ 0)))))))))))))))))))) sz v
   in
   (fun _ _ c ->
   match setByteAt test_cache test_cache_add_nat sz (Pervasives.succ
@@ -1594,9 +1603,9 @@ let calculate_IPChecksum sz v =
   | None -> None)
 
 (** val pseudoHeader_checksum' :
-    Int64Word.t ArrayVector.storage_t -> Int64Word.t ArrayVector.storage_t ->
-    Int64Word.t -> Int64Word.t -> OCamlNativeInt.t -> Int64Word.t
-    ArrayVector.storage_t -> Int64Word.t **)
+    Int64Word.t StackVector.t -> Int64Word.t StackVector.t -> Int64Word.t ->
+    Int64Word.t -> OCamlNativeInt.t -> CstructBytestring.storage_t ->
+    Int64Word.t **)
 
 let pseudoHeader_checksum' srcAddr destAddr udpLength protoCode sz packet =
   oneC_plus (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -1619,9 +1628,9 @@ let pseudoHeader_checksum' srcAddr destAddr udpLength protoCode sz packet =
           (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
           (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
           (Pervasives.succ 0))))))))))))))))
-          (vector_checksum' (Pervasives.succ (Pervasives.succ
+          (byteBuffer_checksum (Pervasives.succ (Pervasives.succ
             (Pervasives.succ (Pervasives.succ 0)))) srcAddr)
-          (vector_checksum' (Pervasives.succ (Pervasives.succ
+          (byteBuffer_checksum (Pervasives.succ (Pervasives.succ
             (Pervasives.succ (Pervasives.succ 0)))) destAddr))
         (Int64Word.zext (Pervasives.succ (Pervasives.succ (Pervasives.succ
           (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -1629,7 +1638,7 @@ let pseudoHeader_checksum' srcAddr destAddr udpLength protoCode sz packet =
           (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
           (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))))))
       udpLength)
-    (vector_checksum_bound'
+    (CstructBytestring.checksum_bound
       (Int64Word.wordToNat (Pervasives.succ (Pervasives.succ (Pervasives.succ
         (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
         (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -1637,9 +1646,9 @@ let pseudoHeader_checksum' srcAddr destAddr udpLength protoCode sz packet =
         (Pervasives.succ 0)))))))))))))))) udpLength) sz packet)
 
 (** val calculate_PseudoChecksum :
-    OCamlNativeInt.t -> Int64Word.t ArrayVector.storage_t -> Int64Word.t
-    ArrayVector.storage_t -> Int64Word.t -> Int64Word.t -> OCamlNativeInt.t
-    -> 'a1 alignedEncodeM **)
+    OCamlNativeInt.t -> Int64Word.t StackVector.t -> Int64Word.t
+    StackVector.t -> Int64Word.t -> Int64Word.t -> OCamlNativeInt.t -> 'a1
+    alignedEncodeM **)
 
 let calculate_PseudoChecksum sz srcAddr destAddr udpLength protoCode idx' v _ _ =
   let checksum =
@@ -1670,15 +1679,15 @@ let calculate_PseudoChecksum sz srcAddr destAddr udpLength protoCode idx' v _ _ 
       (let _,y = a in y)
   | None -> None)
 
-type ethernetHeader = { destination : Int64Word.t ArrayVector.storage_t;
-                        source : Int64Word.t ArrayVector.storage_t;
+type ethernetHeader = { destination : Int64Word.t StackVector.t;
+                        source : Int64Word.t StackVector.t;
                         ethType : char list enumType }
 
-(** val destination : ethernetHeader -> Int64Word.t ArrayVector.storage_t **)
+(** val destination : ethernetHeader -> Int64Word.t StackVector.t **)
 
 let destination x = x.destination
 
-(** val source : ethernetHeader -> Int64Word.t ArrayVector.storage_t **)
+(** val source : ethernetHeader -> Int64Word.t StackVector.t **)
 
 let source x = x.source
 
@@ -1686,10 +1695,10 @@ let source x = x.source
 
 let ethType x = x.ethType
 
-(** val etherTypeCodes : Int64Word.t ArrayVector.storage_t **)
+(** val etherTypeCodes : Int64Word.t StackVector.t **)
 
 let etherTypeCodes =
-  ArrayVector.cons ((Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
+  StackVector.cons ((Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -1728,7 +1737,7 @@ let etherTypeCodes =
     (false, (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws (false,
     (Pervasives.succ 0), (Int64Word.ws (false, 0,
     (Int64Word.w0))))))))))))))))))))))))))))))))), (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))), (ArrayVector.cons ((Int64Word.ws
+    (Pervasives.succ (Pervasives.succ 0))), (StackVector.cons ((Int64Word.ws
     (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -1768,7 +1777,7 @@ let etherTypeCodes =
     (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws (false,
     (Pervasives.succ 0), (Int64Word.ws (false, 0,
     (Int64Word.w0))))))))))))))))))))))))))))))))), (Pervasives.succ
-    (Pervasives.succ 0)), (ArrayVector.cons ((Int64Word.ws (true,
+    (Pervasives.succ 0)), (StackVector.cons ((Int64Word.ws (true,
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -1807,7 +1816,7 @@ let etherTypeCodes =
     (Pervasives.succ 0))), (Int64Word.ws (false, (Pervasives.succ
     (Pervasives.succ 0)), (Int64Word.ws (false, (Pervasives.succ 0),
     (Int64Word.ws (true, 0, (Int64Word.w0))))))))))))))))))))))))))))))))),
-    (Pervasives.succ 0), (ArrayVector.cons ((Int64Word.ws (true,
+    (Pervasives.succ 0), (StackVector.cons ((Int64Word.ws (true,
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -1846,41 +1855,55 @@ let etherTypeCodes =
     (Pervasives.succ 0))), (Int64Word.ws (false, (Pervasives.succ
     (Pervasives.succ 0)), (Int64Word.ws (false, (Pervasives.succ 0),
     (Int64Word.ws (false, 0, (Int64Word.w0))))))))))))))))))))))))))))))))),
-    0, ArrayVector.empty ())))))))
+    0, StackVector.empty ())))))))
 
 (** val ethernetHeader_encoder_impl :
-    ethernetHeader -> OCamlNativeInt.t -> char ArrayVector.storage_t ->
-    ((char ArrayVector.storage_t*OCamlNativeInt.t)*cacheFormat) option **)
+    ethernetHeader -> OCamlNativeInt.t -> CstructBytestring.storage_t ->
+    ((CstructBytestring.storage_t*OCamlNativeInt.t)*cacheFormat) option **)
 
 let ethernetHeader_encoder_impl r sz v =
   match alignedEncodeVector test_cache (Pervasives.succ (Pervasives.succ
           (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-          0)))))) (setCurrentByte test_cache test_cache_add_nat) sz v 0
-          r.destination (Obj.magic ()) with
+          0)))))) (fun n0 v0 idx s ce ->
+          if Nat.ltb idx n0
+          then Some
+                 (((CstructBytestring.set_nth n0 v0 idx s),(Pervasives.succ
+                 idx)),(test_cache_add_nat.addE ce (Pervasives.succ
+                         (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                         (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                         (Pervasives.succ 0))))))))))
+          else None) sz v 0 r.destination (Obj.magic ()) with
   | Some a ->
     (match alignedEncodeVector test_cache (Pervasives.succ (Pervasives.succ
              (Pervasives.succ (Pervasives.succ (Pervasives.succ
-             (Pervasives.succ 0))))))
-             (setCurrentByte test_cache test_cache_add_nat) sz
-             (let x,_ = let x,_ = a in x in x)
+             (Pervasives.succ 0)))))) (fun n0 v0 idx s ce ->
+             if Nat.ltb idx n0
+             then Some
+                    (((CstructBytestring.set_nth n0 v0 idx s),(Pervasives.succ
+                    idx)),(test_cache_add_nat.addE ce (Pervasives.succ
+                            (Pervasives.succ (Pervasives.succ
+                            (Pervasives.succ (Pervasives.succ
+                            (Pervasives.succ (Pervasives.succ
+                            (Pervasives.succ 0))))))))))
+             else None) sz (let x,_ = let x,_ = a in x in x)
              (let _,y = let x,_ = a in x in y) r.source (let _,y = a in y) with
      | Some a0 ->
        setCurrentBytes test_cache test_cache_add_nat sz (Pervasives.succ
          (Pervasives.succ 0)) (let x,_ = let x,_ = a0 in x in x)
          (let _,y = let x,_ = a0 in x in y)
-         (ArrayVector.nth (Pervasives.succ (Pervasives.succ (Pervasives.succ
+         (StackVector.nth (Pervasives.succ (Pervasives.succ (Pervasives.succ
            (Pervasives.succ 0)))) etherTypeCodes r.ethType)
          (let _,y = a0 in y)
      | None -> None)
   | None -> None
 
 (** val aligned_v1042_test :
-    OCamlNativeInt.t -> char ArrayVector.storage_t -> OCamlNativeInt.t -> bool **)
+    OCamlNativeInt.t -> char StackVector.t -> OCamlNativeInt.t -> bool **)
 
 let aligned_v1042_test sz v idx =
-  match ArrayVector.nth_opt sz v idx with
+  match CstructBytestring.nth_opt sz v idx with
   | Some w1 ->
-    (match ArrayVector.nth_opt sz v (Pervasives.succ idx) with
+    (match CstructBytestring.nth_opt sz v (Pervasives.succ idx) with
      | Some w2 ->
        if Int64Word.wlt_dec
             (add (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -2409,72 +2432,184 @@ let aligned_v1042_test sz v idx =
   | None -> false
 
 (** val ethernet_decoder_impl :
-    OCamlNativeInt.t -> OCamlNativeInt.t -> char ArrayVector.storage_t ->
+    OCamlNativeInt.t -> OCamlNativeInt.t -> CstructBytestring.storage_t ->
     ((ethernetHeader*OCamlNativeInt.t)*cacheDecode) option **)
 
 let ethernet_decoder_impl packet_len sz v =
-  match getCurrentByte test_cache test_cache_add_nat sz v 0 (Obj.magic ()) with
+  match let idx = 0 in
+        (match CstructBytestring.nth_opt sz v idx with
+         | Some a ->
+           Some ((a,(Pervasives.succ
+             idx)),(test_cache_add_nat.addD (Obj.magic ()) (Pervasives.succ
+                     (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                     (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                     (Pervasives.succ 0))))))))))
+         | None -> None) with
   | Some a ->
-    (match getCurrentByte test_cache test_cache_add_nat sz v
-             (let _,y = let x,_ = a in x in y) (let _,y = a in y) with
+    let idx = let _,y = let x,_ = a in x in y in
+    (match CstructBytestring.nth_opt sz v idx with
      | Some a0 ->
-       (match getCurrentByte test_cache test_cache_add_nat sz v
-                (let _,y = let x,_ = a0 in x in y) (let _,y = a0 in y) with
-        | Some a1 ->
-          (match getCurrentByte test_cache test_cache_add_nat sz v
-                   (let _,y = let x,_ = a1 in x in y) (let _,y = a1 in y) with
-           | Some a2 ->
-             (match getCurrentByte test_cache test_cache_add_nat sz v
-                      (let _,y = let x,_ = a2 in x in y) (let _,y = a2 in y) with
-              | Some a3 ->
-                (match getCurrentByte test_cache test_cache_add_nat sz v
-                         (let _,y = let x,_ = a3 in x in y)
-                         (let _,y = a3 in y) with
-                 | Some a4 ->
-                   (match getCurrentByte test_cache test_cache_add_nat sz v
-                            (let _,y = let x,_ = a4 in x in y)
-                            (let _,y = a4 in y) with
-                    | Some a5 ->
-                      (match getCurrentByte test_cache test_cache_add_nat sz
-                               v (let _,y = let x,_ = a5 in x in y)
-                               (let _,y = a5 in y) with
-                       | Some a6 ->
-                         (match getCurrentByte test_cache test_cache_add_nat
-                                  sz v (let _,y = let x,_ = a6 in x in y)
-                                  (let _,y = a6 in y) with
-                          | Some a7 ->
-                            (match getCurrentByte test_cache
-                                     test_cache_add_nat sz v
-                                     (let _,y = let x,_ = a7 in x in y)
-                                     (let _,y = a7 in y) with
-                             | Some a8 ->
-                               (match getCurrentByte test_cache
-                                        test_cache_add_nat sz v
-                                        (let _,y = let x,_ = a8 in x in y)
-                                        (let _,y = a8 in y) with
-                                | Some a9 ->
-                                  (match getCurrentByte test_cache
-                                           test_cache_add_nat sz v
-                                           (let _,y = let x,_ = a9 in x in y)
-                                           (let _,y = a9 in y) with
-                                   | Some a10 ->
-                                     let idx =
-                                       let _,y = let x,_ = a10 in x in y
+       let a1 = (a0,(Pervasives.succ
+         idx)),(test_cache_add_nat.addD (let _,y = a in y) (Pervasives.succ
+                 (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                 (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                 (Pervasives.succ 0)))))))))
+       in
+       let idx0 = let _,y = let x,_ = a1 in x in y in
+       (match CstructBytestring.nth_opt sz v idx0 with
+        | Some a2 ->
+          let a3 = (a2,(Pervasives.succ
+            idx0)),(test_cache_add_nat.addD (let _,y = a1 in y)
+                     (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                     (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                     (Pervasives.succ (Pervasives.succ 0)))))))))
+          in
+          let idx1 = let _,y = let x,_ = a3 in x in y in
+          (match CstructBytestring.nth_opt sz v idx1 with
+           | Some a4 ->
+             let a5 = (a4,(Pervasives.succ
+               idx1)),(test_cache_add_nat.addD (let _,y = a3 in y)
+                        (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                        (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                        (Pervasives.succ (Pervasives.succ 0)))))))))
+             in
+             let idx2 = let _,y = let x,_ = a5 in x in y in
+             (match CstructBytestring.nth_opt sz v idx2 with
+              | Some a6 ->
+                let a7 = (a6,(Pervasives.succ
+                  idx2)),(test_cache_add_nat.addD (let _,y = a5 in y)
+                           (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                           (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                           (Pervasives.succ (Pervasives.succ 0)))))))))
+                in
+                let idx3 = let _,y = let x,_ = a7 in x in y in
+                (match CstructBytestring.nth_opt sz v idx3 with
+                 | Some a8 ->
+                   let a9 = (a8,(Pervasives.succ
+                     idx3)),(test_cache_add_nat.addD (let _,y = a7 in y)
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ 0)))))))))
+                   in
+                   let idx4 = let _,y = let x,_ = a9 in x in y in
+                   (match CstructBytestring.nth_opt sz v idx4 with
+                    | Some a10 ->
+                      let a11 = (a10,(Pervasives.succ
+                        idx4)),(test_cache_add_nat.addD (let _,y = a9 in y)
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ 0)))))))))
+                      in
+                      let idx5 = let _,y = let x,_ = a11 in x in y in
+                      (match CstructBytestring.nth_opt sz v idx5 with
+                       | Some a12 ->
+                         let a13 = (a12,(Pervasives.succ
+                           idx5)),(test_cache_add_nat.addD
+                                    (let _,y = a11 in y) (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ 0)))))))))
+                         in
+                         let idx6 = let _,y = let x,_ = a13 in x in y in
+                         (match CstructBytestring.nth_opt sz v idx6 with
+                          | Some a14 ->
+                            let a15 = (a14,(Pervasives.succ
+                              idx6)),(test_cache_add_nat.addD
+                                       (let _,y = a13 in y) (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ 0)))))))))
+                            in
+                            let idx7 = let _,y = let x,_ = a15 in x in y in
+                            (match CstructBytestring.nth_opt sz v idx7 with
+                             | Some a16 ->
+                               let a17 = (a16,(Pervasives.succ
+                                 idx7)),(test_cache_add_nat.addD
+                                          (let _,y = a15 in y)
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          0)))))))))
+                               in
+                               let idx8 = let _,y = let x,_ = a17 in x in y in
+                               (match CstructBytestring.nth_opt sz v idx8 with
+                                | Some a18 ->
+                                  let a19 = (a18,(Pervasives.succ
+                                    idx8)),(test_cache_add_nat.addD
+                                             (let _,y = a17 in y)
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ 0)))))))))
+                                  in
+                                  let idx9 = let _,y = let x,_ = a19 in x in y
+                                  in
+                                  (match CstructBytestring.nth_opt sz v idx9 with
+                                   | Some a20 ->
+                                     let a21 = (a20,(Pervasives.succ
+                                       idx9)),(test_cache_add_nat.addD
+                                                (let _,y = a19 in y)
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ 0)))))))))
                                      in
-                                     let c = let _,y = a10 in y in
-                                     if aligned_v1042_test sz v idx
-                                     then (match getCurrentByte test_cache
-                                                   test_cache_add_nat sz v
-                                                   idx c with
-                                           | Some a11 ->
-                                             (match getCurrentByte test_cache
-                                                      test_cache_add_nat sz v
-                                                      (let _,y =
-                                                         let x,_ = a11 in x
-                                                       in
-                                                       y) (let _,y = a11 in y) with
-                                              | Some a12 ->
-                                                let a13 =
+                                     let idx10 =
+                                       let _,y = let x,_ = a21 in x in y
+                                     in
+                                     let c = let _,y = a21 in y in
+                                     if aligned_v1042_test sz v idx10
+                                     then (match CstructBytestring.nth_opt sz
+                                                   v idx10 with
+                                           | Some a22 ->
+                                             let a23 = (a22,(Pervasives.succ
+                                               idx10)),(test_cache_add_nat.addD
+                                                         c (Pervasives.succ
+                                                         (Pervasives.succ
+                                                         (Pervasives.succ
+                                                         (Pervasives.succ
+                                                         (Pervasives.succ
+                                                         (Pervasives.succ
+                                                         (Pervasives.succ
+                                                         (Pervasives.succ
+                                                         0)))))))))
+                                             in
+                                             let idx11 =
+                                               let _,y = let x,_ = a23 in x in
+                                               y
+                                             in
+                                             (match CstructBytestring.nth_opt
+                                                      sz v idx11 with
+                                              | Some a24 ->
+                                                let a25 =
+                                                  (a24,(Pervasives.succ
+                                                  idx11)),(test_cache_add_nat.addD
+                                                            (let _,y = a23 in
+                                                             y)
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            0)))))))))
+                                                in
+                                                let a26 =
                                                   ((Int64Word.append
                                                      (Pervasives.succ
                                                      (Pervasives.succ
@@ -2495,26 +2630,26 @@ let ethernet_decoder_impl packet_len sz v =
                                                      (Pervasives.succ
                                                      0))))))))
                                                      (let x,_ =
-                                                        let x,_ = a12 in x
+                                                        let x,_ = a25 in x
                                                       in
                                                       x)
                                                      (let x,_ =
-                                                        let x,_ = a11 in x
+                                                        let x,_ = a23 in x
                                                       in
                                                       x)),(let _,y =
-                                                             let x,_ = a12 in
+                                                             let x,_ = a25 in
                                                              x
                                                            in
-                                                           y)),(let _,y = a12
+                                                           y)),(let _,y = a25
                                                                 in
                                                                 y)
                                                 in
-                                                let idx0 =
-                                                  let _,y = let x,_ = a13 in x
+                                                let idx12 =
+                                                  let _,y = let x,_ = a26 in x
                                                   in
                                                   y
                                                 in
-                                                let c0 = let _,y = a13 in y in
+                                                let c0 = let _,y = a26 in y in
                                                 if (=)
                                                      (Int64Word.wordToNat
                                                        (Pervasives.succ
@@ -2535,22 +2670,34 @@ let ethernet_decoder_impl packet_len sz v =
                                                        (Pervasives.succ
                                                        0))))))))))))))))
                                                        (let x,_ =
-                                                          let x,_ = a13 in x
+                                                          let x,_ = a26 in x
                                                         in
                                                         x)) packet_len
-                                                then (match getCurrentByte
-                                                              test_cache
-                                                              test_cache_add_nat
-                                                              sz v idx0 c0 with
-                                                      | Some a14 ->
-                                                        let idx1 =
+                                                then (match CstructBytestring.nth_opt
+                                                              sz v idx12 with
+                                                      | Some a27 ->
+                                                        let a28 =
+                                                          (a27,(Pervasives.succ
+                                                          idx12)),(test_cache_add_nat.addD
+                                                                    c0
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                        in
+                                                        let idx13 =
                                                           let _,y =
-                                                            let x,_ = a14 in x
+                                                            let x,_ = a28 in x
                                                           in
                                                           y
                                                         in
                                                         let c1 =
-                                                          let _,y = a14 in y
+                                                          let _,y = a28 in y
                                                         in
                                                         if Int64Word.weq
                                                              (Pervasives.succ
@@ -2563,7 +2710,7 @@ let ethernet_decoder_impl packet_len sz v =
                                                              (Pervasives.succ
                                                              0))))))))
                                                              (let x,_ =
-                                                                let x,_ = a14
+                                                                let x,_ = a28
                                                                 in
                                                                 x
                                                               in
@@ -2620,16 +2767,28 @@ let ethernet_decoder_impl packet_len sz v =
                                                              (Int64Word.ws
                                                              (false, 0,
                                                              (Int64Word.w0)))))))))))))))))
-                                                        then (match getCurrentByte
-                                                                    test_cache
-                                                                    test_cache_add_nat
-                                                                    sz v idx1
-                                                                    c1 with
-                                                              | Some a15 ->
-                                                                let idx2 =
+                                                        then (match CstructBytestring.nth_opt
+                                                                    sz v idx13 with
+                                                              | Some a29 ->
+                                                                let a30 =
+                                                                  (a29,(Pervasives.succ
+                                                                  idx13)),
+                                                                  (test_cache_add_nat.addD
+                                                                    c1
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                in
+                                                                let idx14 =
                                                                   let _,y =
                                                                     let x,_ =
-                                                                    a15
+                                                                    a30
                                                                     in
                                                                     x
                                                                   in
@@ -2637,7 +2796,7 @@ let ethernet_decoder_impl packet_len sz v =
                                                                 in
                                                                 let c2 =
                                                                   let _,y =
-                                                                    a15
+                                                                    a30
                                                                   in
                                                                   y
                                                                 in
@@ -2654,7 +2813,7 @@ let ethernet_decoder_impl packet_len sz v =
                                                                     (
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a15
+                                                                    a30
                                                                     in
                                                                     x
                                                                     in
@@ -2714,16 +2873,28 @@ let ethernet_decoder_impl packet_len sz v =
                                                                     (Int64Word.w0)))))))))))))))))
                                                                 then 
                                                                   (match 
-                                                                   getCurrentByte
-                                                                    test_cache
-                                                                    test_cache_add_nat
-                                                                    sz v idx2
-                                                                    c2 with
-                                                                   | Some a16 ->
-                                                                    let idx3 =
+                                                                   CstructBytestring.nth_opt
+                                                                    sz v idx14 with
+                                                                   | Some a31 ->
+                                                                    let a32 =
+                                                                    (a31,(Pervasives.succ
+                                                                    idx14)),
+                                                                    (test_cache_add_nat.addD
+                                                                    c2
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    in
+                                                                    let idx15 =
                                                                     let _,y =
                                                                     let x,_ =
-                                                                    a16
+                                                                    a32
                                                                     in
                                                                     x
                                                                     in
@@ -2731,7 +2902,7 @@ let ethernet_decoder_impl packet_len sz v =
                                                                     in
                                                                     let c3 =
                                                                     let _,y =
-                                                                    a16
+                                                                    a32
                                                                     in
                                                                     y
                                                                     in
@@ -2749,7 +2920,7 @@ let ethernet_decoder_impl packet_len sz v =
                                                                     (
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a16
+                                                                    a32
                                                                     in
                                                                     x
                                                                     in
@@ -2808,51 +2979,91 @@ let ethernet_decoder_impl packet_len sz v =
                                                                     (Int64Word.w0)))))))))))))))))
                                                                     then 
                                                                     (match 
-                                                                    getCurrentByte
-                                                                    test_cache
-                                                                    test_cache_add_nat
-                                                                    sz v idx3
-                                                                    c3 with
-                                                                    | Some a17 ->
-                                                                    (match 
-                                                                    getCurrentByte
-                                                                    test_cache
-                                                                    test_cache_add_nat
-                                                                    sz v
-                                                                    (
+                                                                    CstructBytestring.nth_opt
+                                                                    sz v idx15 with
+                                                                    | Some a33 ->
+                                                                    let a34 =
+                                                                    (a33,(Pervasives.succ
+                                                                    idx15)),
+                                                                    (test_cache_add_nat.addD
+                                                                    c3
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    in
+                                                                    let idx16 =
                                                                     let _,y =
                                                                     let x,_ =
-                                                                    a17
+                                                                    a34
                                                                     in
                                                                     x
                                                                     in
-                                                                    y)
+                                                                    y
+                                                                    in
+                                                                    (
+                                                                    match 
+                                                                    CstructBytestring.nth_opt
+                                                                    sz v idx16 with
+                                                                    | Some a35 ->
+                                                                    let a36 =
+                                                                    (a35,(Pervasives.succ
+                                                                    idx16)),
+                                                                    (test_cache_add_nat.addD
                                                                     (
                                                                     let _,y =
-                                                                    a17
+                                                                    a34
                                                                     in
-                                                                    y) with
-                                                                    | Some a18 ->
-                                                                    (match 
-                                                                    getCurrentByte
-                                                                    test_cache
-                                                                    test_cache_add_nat
-                                                                    sz v
-                                                                    (
+                                                                    y)
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    in
+                                                                    let idx17 =
                                                                     let _,y =
                                                                     let x,_ =
-                                                                    a18
+                                                                    a36
                                                                     in
                                                                     x
                                                                     in
-                                                                    y)
+                                                                    y
+                                                                    in
+                                                                    (
+                                                                    match 
+                                                                    CstructBytestring.nth_opt
+                                                                    sz v idx17 with
+                                                                    | Some a37 ->
+                                                                    let a38 =
+                                                                    (a37,(Pervasives.succ
+                                                                    idx17)),
+                                                                    (test_cache_add_nat.addD
                                                                     (
                                                                     let _,y =
-                                                                    a18
+                                                                    a36
                                                                     in
-                                                                    y) with
-                                                                    | Some a19 ->
-                                                                    let a20 =
+                                                                    y)
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    in
+                                                                    let a39 =
                                                                     ((Int64Word.append
                                                                     (Pervasives.succ
                                                                     (Pervasives.succ
@@ -2885,7 +3096,7 @@ let ethernet_decoder_impl packet_len sz v =
                                                                     (
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a19
+                                                                    a38
                                                                     in
                                                                     x
                                                                     in
@@ -2912,7 +3123,7 @@ let ethernet_decoder_impl packet_len sz v =
                                                                     (
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a18
+                                                                    a36
                                                                     in
                                                                     x
                                                                     in
@@ -2920,7 +3131,7 @@ let ethernet_decoder_impl packet_len sz v =
                                                                     (
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a17
+                                                                    a34
                                                                     in
                                                                     x
                                                                     in
@@ -2928,21 +3139,21 @@ let ethernet_decoder_impl packet_len sz v =
                                                                     (
                                                                     let _,y =
                                                                     let x,_ =
-                                                                    a19
+                                                                    a38
                                                                     in
                                                                     x
                                                                     in
                                                                     y)),
                                                                     (
                                                                     let _,y =
-                                                                    a19
+                                                                    a38
                                                                     in
                                                                     y)
                                                                     in
-                                                                    let idx4 =
+                                                                    let idx18 =
                                                                     let _,y =
                                                                     let x,_ =
-                                                                    a20
+                                                                    a39
                                                                     in
                                                                     x
                                                                     in
@@ -2950,7 +3161,7 @@ let ethernet_decoder_impl packet_len sz v =
                                                                     in
                                                                     let c4 =
                                                                     let _,y =
-                                                                    a20
+                                                                    a39
                                                                     in
                                                                     y
                                                                     in
@@ -2984,7 +3195,7 @@ let ethernet_decoder_impl packet_len sz v =
                                                                     (
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a20
+                                                                    a39
                                                                     in
                                                                     x
                                                                     in
@@ -3028,12 +3239,12 @@ let ethernet_decoder_impl packet_len sz v =
                                                                     test_cache
                                                                     test_cache_add_nat
                                                                     etherTypeCodes
-                                                                    sz v idx4
-                                                                    c4 with
-                                                                    | Some a21 ->
+                                                                    sz v
+                                                                    idx18 c4 with
+                                                                    | Some a40 ->
                                                                     Some
                                                                     (({ destination =
-                                                                    (ArrayVector.cons
+                                                                    (StackVector.cons
                                                                     ((
                                                                     let x,_ =
                                                                     let x,_ =
@@ -3048,21 +3259,7 @@ let ethernet_decoder_impl packet_len sz v =
                                                                     (Pervasives.succ
                                                                     (Pervasives.succ
                                                                     0))))),
-                                                                    (ArrayVector.cons
-                                                                    ((
-                                                                    let x,_ =
-                                                                    let x,_ =
-                                                                    a0
-                                                                    in
-                                                                    x
-                                                                    in
-                                                                    x),
-                                                                    (Pervasives.succ
-                                                                    (Pervasives.succ
-                                                                    (Pervasives.succ
-                                                                    (Pervasives.succ
-                                                                    0)))),
-                                                                    (ArrayVector.cons
+                                                                    (StackVector.cons
                                                                     ((
                                                                     let x,_ =
                                                                     let x,_ =
@@ -3074,20 +3271,9 @@ let ethernet_decoder_impl packet_len sz v =
                                                                     (Pervasives.succ
                                                                     (Pervasives.succ
                                                                     (Pervasives.succ
-                                                                    0))),
-                                                                    (ArrayVector.cons
-                                                                    ((
-                                                                    let x,_ =
-                                                                    let x,_ =
-                                                                    a2
-                                                                    in
-                                                                    x
-                                                                    in
-                                                                    x),
                                                                     (Pervasives.succ
-                                                                    (Pervasives.succ
-                                                                    0)),
-                                                                    (ArrayVector.cons
+                                                                    0)))),
+                                                                    (StackVector.cons
                                                                     ((
                                                                     let x,_ =
                                                                     let x,_ =
@@ -3097,19 +3283,10 @@ let ethernet_decoder_impl packet_len sz v =
                                                                     in
                                                                     x),
                                                                     (Pervasives.succ
-                                                                    0),
-                                                                    (ArrayVector.cons
-                                                                    ((
-                                                                    let x,_ =
-                                                                    let x,_ =
-                                                                    a4
-                                                                    in
-                                                                    x
-                                                                    in
-                                                                    x), 0,
-                                                                    ArrayVector.empty ()))))))))))));
-                                                                    source =
-                                                                    (ArrayVector.cons
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0))),
+                                                                    (StackVector.cons
                                                                     ((
                                                                     let x,_ =
                                                                     let x,_ =
@@ -3120,25 +3297,8 @@ let ethernet_decoder_impl packet_len sz v =
                                                                     x),
                                                                     (Pervasives.succ
                                                                     (Pervasives.succ
-                                                                    (Pervasives.succ
-                                                                    (Pervasives.succ
-                                                                    (Pervasives.succ
-                                                                    0))))),
-                                                                    (ArrayVector.cons
-                                                                    ((
-                                                                    let x,_ =
-                                                                    let x,_ =
-                                                                    a6
-                                                                    in
-                                                                    x
-                                                                    in
-                                                                    x),
-                                                                    (Pervasives.succ
-                                                                    (Pervasives.succ
-                                                                    (Pervasives.succ
-                                                                    (Pervasives.succ
-                                                                    0)))),
-                                                                    (ArrayVector.cons
+                                                                    0)),
+                                                                    (StackVector.cons
                                                                     ((
                                                                     let x,_ =
                                                                     let x,_ =
@@ -3148,22 +3308,8 @@ let ethernet_decoder_impl packet_len sz v =
                                                                     in
                                                                     x),
                                                                     (Pervasives.succ
-                                                                    (Pervasives.succ
-                                                                    (Pervasives.succ
-                                                                    0))),
-                                                                    (ArrayVector.cons
-                                                                    ((
-                                                                    let x,_ =
-                                                                    let x,_ =
-                                                                    a8
-                                                                    in
-                                                                    x
-                                                                    in
-                                                                    x),
-                                                                    (Pervasives.succ
-                                                                    (Pervasives.succ
-                                                                    0)),
-                                                                    (ArrayVector.cons
+                                                                    0),
+                                                                    (StackVector.cons
                                                                     ((
                                                                     let x,_ =
                                                                     let x,_ =
@@ -3171,24 +3317,89 @@ let ethernet_decoder_impl packet_len sz v =
                                                                     in
                                                                     x
                                                                     in
-                                                                    x),
-                                                                    (Pervasives.succ
-                                                                    0),
-                                                                    (ArrayVector.cons
+                                                                    x), 0,
+                                                                    StackVector.empty ()))))))))))));
+                                                                    source =
+                                                                    (StackVector.cons
                                                                     ((
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a10
+                                                                    a11
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x),
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0))))),
+                                                                    (StackVector.cons
+                                                                    ((
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a13
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x),
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))),
+                                                                    (StackVector.cons
+                                                                    ((
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a15
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x),
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0))),
+                                                                    (StackVector.cons
+                                                                    ((
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a17
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x),
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)),
+                                                                    (StackVector.cons
+                                                                    ((
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a19
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x),
+                                                                    (Pervasives.succ
+                                                                    0),
+                                                                    (StackVector.cons
+                                                                    ((
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a21
                                                                     in
                                                                     x
                                                                     in
                                                                     x), 0,
-                                                                    ArrayVector.empty ()))))))))))));
+                                                                    StackVector.empty ()))))))))))));
                                                                     ethType =
                                                                     (
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a21
+                                                                    a40
                                                                     in
                                                                     x
                                                                     in
@@ -3196,14 +3407,14 @@ let ethernet_decoder_impl packet_len sz v =
                                                                     (
                                                                     let _,y =
                                                                     let x,_ =
-                                                                    a21
+                                                                    a40
                                                                     in
                                                                     x
                                                                     in
                                                                     y)),
                                                                     (
                                                                     let _,y =
-                                                                    a21
+                                                                    a40
                                                                     in
                                                                     y))
                                                                     | None ->
@@ -3233,85 +3444,85 @@ let ethernet_decoder_impl packet_len sz v =
                                                    (Pervasives.succ 0)))
                                                    test_cache
                                                    test_cache_add_nat
-                                                   etherTypeCodes sz v idx c with
-                                           | Some a11 ->
+                                                   etherTypeCodes sz v idx10 c with
+                                           | Some a22 ->
                                              Some (({ destination =
-                                               (ArrayVector.cons
+                                               (StackVector.cons
                                                ((let x,_ = let x,_ = a in x in
                                                  x), (Pervasives.succ
                                                (Pervasives.succ
                                                (Pervasives.succ
                                                (Pervasives.succ
                                                (Pervasives.succ 0))))),
-                                               (ArrayVector.cons
-                                               ((let x,_ = let x,_ = a0 in x
+                                               (StackVector.cons
+                                               ((let x,_ = let x,_ = a1 in x
                                                  in
                                                  x), (Pervasives.succ
                                                (Pervasives.succ
                                                (Pervasives.succ
                                                (Pervasives.succ 0)))),
-                                               (ArrayVector.cons
-                                               ((let x,_ = let x,_ = a1 in x
+                                               (StackVector.cons
+                                               ((let x,_ = let x,_ = a3 in x
                                                  in
                                                  x), (Pervasives.succ
                                                (Pervasives.succ
                                                (Pervasives.succ 0))),
-                                               (ArrayVector.cons
-                                               ((let x,_ = let x,_ = a2 in x
+                                               (StackVector.cons
+                                               ((let x,_ = let x,_ = a5 in x
                                                  in
                                                  x), (Pervasives.succ
                                                (Pervasives.succ 0)),
-                                               (ArrayVector.cons
-                                               ((let x,_ = let x,_ = a3 in x
+                                               (StackVector.cons
+                                               ((let x,_ = let x,_ = a7 in x
                                                  in
                                                  x), (Pervasives.succ 0),
-                                               (ArrayVector.cons
-                                               ((let x,_ = let x,_ = a4 in x
+                                               (StackVector.cons
+                                               ((let x,_ = let x,_ = a9 in x
                                                  in
                                                  x), 0,
-                                               ArrayVector.empty ()))))))))))));
-                                               source = (ArrayVector.cons
-                                               ((let x,_ = let x,_ = a5 in x
+                                               StackVector.empty ()))))))))))));
+                                               source = (StackVector.cons
+                                               ((let x,_ = let x,_ = a11 in x
                                                  in
                                                  x), (Pervasives.succ
                                                (Pervasives.succ
                                                (Pervasives.succ
                                                (Pervasives.succ
                                                (Pervasives.succ 0))))),
-                                               (ArrayVector.cons
-                                               ((let x,_ = let x,_ = a6 in x
+                                               (StackVector.cons
+                                               ((let x,_ = let x,_ = a13 in x
                                                  in
                                                  x), (Pervasives.succ
                                                (Pervasives.succ
                                                (Pervasives.succ
                                                (Pervasives.succ 0)))),
-                                               (ArrayVector.cons
-                                               ((let x,_ = let x,_ = a7 in x
+                                               (StackVector.cons
+                                               ((let x,_ = let x,_ = a15 in x
                                                  in
                                                  x), (Pervasives.succ
                                                (Pervasives.succ
                                                (Pervasives.succ 0))),
-                                               (ArrayVector.cons
-                                               ((let x,_ = let x,_ = a8 in x
+                                               (StackVector.cons
+                                               ((let x,_ = let x,_ = a17 in x
                                                  in
                                                  x), (Pervasives.succ
                                                (Pervasives.succ 0)),
-                                               (ArrayVector.cons
-                                               ((let x,_ = let x,_ = a9 in x
+                                               (StackVector.cons
+                                               ((let x,_ = let x,_ = a19 in x
                                                  in
                                                  x), (Pervasives.succ 0),
-                                               (ArrayVector.cons
-                                               ((let x,_ = let x,_ = a10 in x
+                                               (StackVector.cons
+                                               ((let x,_ = let x,_ = a21 in x
                                                  in
                                                  x), 0,
-                                               ArrayVector.empty ()))))))))))));
+                                               StackVector.empty ()))))))))))));
                                                ethType =
-                                               (let x,_ = let x,_ = a11 in x
+                                               (let x,_ = let x,_ = a22 in x
                                                 in
                                                 x) },(let _,y =
-                                                        let x,_ = a11 in x
+                                                        let x,_ = a22 in x
                                                       in
-                                                      y)),(let _,y = a11 in y))
+                                                      y)),(let _,y = a22 in y))
                                            | None -> None)
                                    | None -> None)
                                 | None -> None)
@@ -3362,10 +3573,10 @@ let targetHardAddress x = x.targetHardAddress
 
 let targetProtAddress x = x.targetProtAddress
 
-(** val hardTypeCodes : Int64Word.t ArrayVector.storage_t **)
+(** val hardTypeCodes : Int64Word.t StackVector.t **)
 
 let hardTypeCodes =
-  ArrayVector.cons ((Int64Word.ws (true, (Pervasives.succ (Pervasives.succ
+  StackVector.cons ((Int64Word.ws (true, (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -3404,7 +3615,7 @@ let hardTypeCodes =
     (false, (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws (false,
     (Pervasives.succ 0), (Int64Word.ws (false, 0,
     (Int64Word.w0))))))))))))))))))))))))))))))))), (Pervasives.succ
-    (Pervasives.succ 0)), (ArrayVector.cons ((Int64Word.ws (false,
+    (Pervasives.succ 0)), (StackVector.cons ((Int64Word.ws (false,
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -3443,7 +3654,7 @@ let hardTypeCodes =
     (Pervasives.succ 0))), (Int64Word.ws (false, (Pervasives.succ
     (Pervasives.succ 0)), (Int64Word.ws (false, (Pervasives.succ 0),
     (Int64Word.ws (false, 0, (Int64Word.w0))))))))))))))))))))))))))))))))),
-    (Pervasives.succ 0), (ArrayVector.cons ((Int64Word.ws (true,
+    (Pervasives.succ 0), (StackVector.cons ((Int64Word.ws (true,
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -3482,12 +3693,12 @@ let hardTypeCodes =
     (Pervasives.succ 0))), (Int64Word.ws (false, (Pervasives.succ
     (Pervasives.succ 0)), (Int64Word.ws (false, (Pervasives.succ 0),
     (Int64Word.ws (false, 0, (Int64Word.w0))))))))))))))))))))))))))))))))),
-    0, ArrayVector.empty ())))))
+    0, StackVector.empty ())))))
 
-(** val etherTypeCodes0 : Int64Word.t ArrayVector.storage_t **)
+(** val etherTypeCodes0 : Int64Word.t StackVector.t **)
 
 let etherTypeCodes0 =
-  ArrayVector.cons ((Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
+  StackVector.cons ((Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -3526,7 +3737,7 @@ let etherTypeCodes0 =
     (false, (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws (false,
     (Pervasives.succ 0), (Int64Word.ws (false, 0,
     (Int64Word.w0))))))))))))))))))))))))))))))))), (Pervasives.succ 0),
-    (ArrayVector.cons ((Int64Word.ws (true, (Pervasives.succ (Pervasives.succ
+    (StackVector.cons ((Int64Word.ws (true, (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -3564,12 +3775,12 @@ let etherTypeCodes0 =
     (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))), (Int64Word.ws
     (false, (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws (false,
     (Pervasives.succ 0), (Int64Word.ws (true, 0,
-    (Int64Word.w0))))))))))))))))))))))))))))))))), 0, ArrayVector.empty ())))
+    (Int64Word.w0))))))))))))))))))))))))))))))))), 0, StackVector.empty ())))
 
-(** val hardSizeCodes : Int64Word.t ArrayVector.storage_t **)
+(** val hardSizeCodes : Int64Word.t StackVector.t **)
 
 let hardSizeCodes =
-  ArrayVector.cons ((Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
+  StackVector.cons ((Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ 0))))))), (Int64Word.ws (true, (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -3581,7 +3792,7 @@ let hardSizeCodes =
     (false, (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws (false,
     (Pervasives.succ 0), (Int64Word.ws (false, 0,
     (Int64Word.w0))))))))))))))))), (Pervasives.succ (Pervasives.succ 0)),
-    (ArrayVector.cons ((Int64Word.ws (false, (Pervasives.succ
+    (StackVector.cons ((Int64Word.ws (false, (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ 0))))))), (Int64Word.ws (true,
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -3592,7 +3803,7 @@ let hardSizeCodes =
     (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))),
     (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ 0)),
     (Int64Word.ws (false, (Pervasives.succ 0), (Int64Word.ws (false, 0,
-    (Int64Word.w0))))))))))))))))), (Pervasives.succ 0), (ArrayVector.cons
+    (Int64Word.w0))))))))))))))))), (Pervasives.succ 0), (StackVector.cons
     ((Int64Word.ws (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     0))))))), (Int64Word.ws (true, (Pervasives.succ (Pervasives.succ
@@ -3604,12 +3815,12 @@ let hardSizeCodes =
     (Pervasives.succ (Pervasives.succ 0))), (Int64Word.ws (false,
     (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws (false,
     (Pervasives.succ 0), (Int64Word.ws (false, 0,
-    (Int64Word.w0))))))))))))))))), 0, ArrayVector.empty ())))))
+    (Int64Word.w0))))))))))))))))), 0, StackVector.empty ())))))
 
-(** val protSizeCodes : Int64Word.t ArrayVector.storage_t **)
+(** val protSizeCodes : Int64Word.t StackVector.t **)
 
 let protSizeCodes =
-  ArrayVector.cons ((Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
+  StackVector.cons ((Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ 0))))))), (Int64Word.ws (false, (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -3620,7 +3831,7 @@ let protSizeCodes =
     (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))), (Int64Word.ws
     (false, (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws (false,
     (Pervasives.succ 0), (Int64Word.ws (false, 0,
-    (Int64Word.w0))))))))))))))))), (Pervasives.succ 0), (ArrayVector.cons
+    (Int64Word.w0))))))))))))))))), (Pervasives.succ 0), (StackVector.cons
     ((Int64Word.ws (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     0))))))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
@@ -3632,12 +3843,12 @@ let protSizeCodes =
     (Pervasives.succ (Pervasives.succ 0))), (Int64Word.ws (false,
     (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws (false,
     (Pervasives.succ 0), (Int64Word.ws (false, 0,
-    (Int64Word.w0))))))))))))))))), 0, ArrayVector.empty ())))
+    (Int64Word.w0))))))))))))))))), 0, StackVector.empty ())))
 
-(** val operationCodes : Int64Word.t ArrayVector.storage_t **)
+(** val operationCodes : Int64Word.t StackVector.t **)
 
 let operationCodes =
-  ArrayVector.cons ((Int64Word.ws (true, (Pervasives.succ (Pervasives.succ
+  StackVector.cons ((Int64Word.ws (true, (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -3676,7 +3887,7 @@ let operationCodes =
     (false, (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws (false,
     (Pervasives.succ 0), (Int64Word.ws (false, 0,
     (Int64Word.w0))))))))))))))))))))))))))))))))), (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))), (ArrayVector.cons ((Int64Word.ws
+    (Pervasives.succ (Pervasives.succ 0))), (StackVector.cons ((Int64Word.ws
     (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -3716,7 +3927,7 @@ let operationCodes =
     (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws (false,
     (Pervasives.succ 0), (Int64Word.ws (false, 0,
     (Int64Word.w0))))))))))))))))))))))))))))))))), (Pervasives.succ
-    (Pervasives.succ 0)), (ArrayVector.cons ((Int64Word.ws (true,
+    (Pervasives.succ 0)), (StackVector.cons ((Int64Word.ws (true,
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -3755,7 +3966,7 @@ let operationCodes =
     (Pervasives.succ 0))), (Int64Word.ws (false, (Pervasives.succ
     (Pervasives.succ 0)), (Int64Word.ws (false, (Pervasives.succ 0),
     (Int64Word.ws (false, 0, (Int64Word.w0))))))))))))))))))))))))))))))))),
-    (Pervasives.succ 0), (ArrayVector.cons ((Int64Word.ws (false,
+    (Pervasives.succ 0), (StackVector.cons ((Int64Word.ws (false,
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -3794,79 +4005,145 @@ let operationCodes =
     (Pervasives.succ 0))), (Int64Word.ws (false, (Pervasives.succ
     (Pervasives.succ 0)), (Int64Word.ws (false, (Pervasives.succ 0),
     (Int64Word.ws (false, 0, (Int64Word.w0))))))))))))))))))))))))))))))))),
-    0, ArrayVector.empty ())))))))
+    0, StackVector.empty ())))))))
 
 (** val aRP_encoder_impl :
-    OCamlNativeInt.t -> char ArrayVector.storage_t -> aRPPacket -> ((char
-    ArrayVector.storage_t*OCamlNativeInt.t)*cacheFormat) option **)
+    OCamlNativeInt.t -> CstructBytestring.storage_t -> aRPPacket ->
+    ((CstructBytestring.storage_t*OCamlNativeInt.t)*cacheFormat) option **)
 
 let aRP_encoder_impl sz v r =
   match setCurrentBytes test_cache test_cache_add_nat sz (Pervasives.succ
           (Pervasives.succ 0)) v 0
-          (ArrayVector.nth (Pervasives.succ (Pervasives.succ (Pervasives.succ
+          (StackVector.nth (Pervasives.succ (Pervasives.succ (Pervasives.succ
             0))) hardTypeCodes r.hardType) (Obj.magic ()) with
   | Some a ->
     (match setCurrentBytes test_cache test_cache_add_nat sz (Pervasives.succ
              (Pervasives.succ 0)) (let x,_ = let x,_ = a in x in x)
              (let _,y = let x,_ = a in x in y)
-             (ArrayVector.nth (Pervasives.succ (Pervasives.succ 0))
+             (StackVector.nth (Pervasives.succ (Pervasives.succ 0))
                etherTypeCodes0 r.protType) (let _,y = a in y) with
      | Some a0 ->
-       (match setCurrentByte test_cache test_cache_add_nat sz
-                (let x,_ = let x,_ = a0 in x in x)
-                (let _,y = let x,_ = a0 in x in y)
-                (ArrayVector.nth (Pervasives.succ (Pervasives.succ
-                  (Pervasives.succ 0))) hardSizeCodes r.hardType)
-                (let _,y = a0 in y) with
-        | Some a1 ->
-          (match setCurrentByte test_cache test_cache_add_nat sz
-                   (let x,_ = let x,_ = a1 in x in x)
-                   (let _,y = let x,_ = a1 in x in y)
-                   (ArrayVector.nth (Pervasives.succ (Pervasives.succ 0))
-                     protSizeCodes r.protType) (let _,y = a1 in y) with
-           | Some a2 ->
-             (match setCurrentBytes test_cache test_cache_add_nat sz
-                      (Pervasives.succ (Pervasives.succ 0))
-                      (let x,_ = let x,_ = a2 in x in x)
-                      (let _,y = let x,_ = a2 in x in y)
-                      (ArrayVector.nth (Pervasives.succ (Pervasives.succ
-                        (Pervasives.succ (Pervasives.succ 0))))
-                        operationCodes r.operation) (let _,y = a2 in y) with
-              | Some a3 ->
-                (match alignedEncodeList test_cache
-                         (setCurrentByte test_cache test_cache_add_nat) sz
-                         (let x,_ = let x,_ = a3 in x in x)
-                         (let _,y = let x,_ = a3 in x in y)
-                         r.senderHardAddress (let _,y = a3 in y) with
-                 | Some a4 ->
-                   (match alignedEncodeList test_cache
-                            (setCurrentByte test_cache test_cache_add_nat) sz
-                            (let x,_ = let x,_ = a4 in x in x)
-                            (let _,y = let x,_ = a4 in x in y)
-                            r.senderProtAddress (let _,y = a4 in y) with
-                    | Some a5 ->
-                      (match alignedEncodeList test_cache
-                               (setCurrentByte test_cache test_cache_add_nat)
-                               sz (let x,_ = let x,_ = a5 in x in x)
-                               (let _,y = let x,_ = a5 in x in y)
-                               r.targetHardAddress (let _,y = a5 in y) with
-                       | Some a6 ->
-                         alignedEncodeList test_cache
-                           (setCurrentByte test_cache test_cache_add_nat) sz
-                           (let x,_ = let x,_ = a6 in x in x)
-                           (let _,y = let x,_ = a6 in x in y)
-                           r.targetProtAddress (let _,y = a6 in y)
-                       | None -> None)
-                    | None -> None)
-                 | None -> None)
-              | None -> None)
-           | None -> None)
-        | None -> None)
+       let idx = let _,y = let x,_ = a0 in x in y in
+       if Nat.ltb idx sz
+       then let a1 =
+              ((CstructBytestring.set_nth sz
+                 (let x,_ = let x,_ = a0 in x in x) idx
+                 (StackVector.nth (Pervasives.succ (Pervasives.succ
+                   (Pervasives.succ 0))) hardSizeCodes r.hardType)),(Pervasives.succ
+              idx)),(test_cache_add_nat.addE (let _,y = a0 in y)
+                      (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                      (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                      (Pervasives.succ (Pervasives.succ 0)))))))))
+            in
+            let idx0 = let _,y = let x,_ = a1 in x in y in
+            if Nat.ltb idx0 sz
+            then let a2 =
+                   ((CstructBytestring.set_nth sz
+                      (let x,_ = let x,_ = a1 in x in x) idx0
+                      (StackVector.nth (Pervasives.succ (Pervasives.succ 0))
+                        protSizeCodes r.protType)),(Pervasives.succ
+                   idx0)),(test_cache_add_nat.addE (let _,y = a1 in y)
+                            (Pervasives.succ (Pervasives.succ
+                            (Pervasives.succ (Pervasives.succ
+                            (Pervasives.succ (Pervasives.succ
+                            (Pervasives.succ (Pervasives.succ 0)))))))))
+                 in
+                 (match setCurrentBytes test_cache test_cache_add_nat sz
+                          (Pervasives.succ (Pervasives.succ 0))
+                          (let x,_ = let x,_ = a2 in x in x)
+                          (let _,y = let x,_ = a2 in x in y)
+                          (StackVector.nth (Pervasives.succ (Pervasives.succ
+                            (Pervasives.succ (Pervasives.succ 0))))
+                            operationCodes r.operation) (let _,y = a2 in y) with
+                  | Some a3 ->
+                    (match alignedEncodeList test_cache
+                             (fun n0 v0 idx1 s ce ->
+                             if Nat.ltb idx1 n0
+                             then Some
+                                    (((CstructBytestring.set_nth n0 v0 idx1 s),(Pervasives.succ
+                                    idx1)),(test_cache_add_nat.addE ce
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ 0))))))))))
+                             else None) sz (let x,_ = let x,_ = a3 in x in x)
+                             (let _,y = let x,_ = a3 in x in y)
+                             r.senderHardAddress (let _,y = a3 in y) with
+                     | Some a4 ->
+                       (match alignedEncodeList test_cache
+                                (fun n0 v0 idx1 s ce ->
+                                if Nat.ltb idx1 n0
+                                then Some
+                                       (((CstructBytestring.set_nth n0 v0
+                                           idx1 s),(Pervasives.succ
+                                       idx1)),(test_cache_add_nat.addE ce
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ 0))))))))))
+                                else None) sz
+                                (let x,_ = let x,_ = a4 in x in x)
+                                (let _,y = let x,_ = a4 in x in y)
+                                r.senderProtAddress (let _,y = a4 in y) with
+                        | Some a5 ->
+                          (match alignedEncodeList test_cache
+                                   (fun n0 v0 idx1 s ce ->
+                                   if Nat.ltb idx1 n0
+                                   then Some
+                                          (((CstructBytestring.set_nth n0 v0
+                                              idx1 s),(Pervasives.succ
+                                          idx1)),(test_cache_add_nat.addE ce
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ 0))))))))))
+                                   else None) sz
+                                   (let x,_ = let x,_ = a5 in x in x)
+                                   (let _,y = let x,_ = a5 in x in y)
+                                   r.targetHardAddress (let _,y = a5 in y) with
+                           | Some a6 ->
+                             alignedEncodeList test_cache
+                               (fun n0 v0 idx1 s ce ->
+                               if Nat.ltb idx1 n0
+                               then Some
+                                      (((CstructBytestring.set_nth n0 v0 idx1
+                                          s),(Pervasives.succ
+                                      idx1)),(test_cache_add_nat.addE ce
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ 0))))))))))
+                               else None) sz
+                               (let x,_ = let x,_ = a6 in x in x)
+                               (let _,y = let x,_ = a6 in x in y)
+                               r.targetProtAddress (let _,y = a6 in y)
+                           | None -> None)
+                        | None -> None)
+                     | None -> None)
+                  | None -> None)
+            else None
+       else None
      | None -> None)
   | None -> None
 
 (** val aRP_decoder_impl :
-    OCamlNativeInt.t -> char ArrayVector.storage_t ->
+    OCamlNativeInt.t -> CstructBytestring.storage_t ->
     ((aRPPacket*OCamlNativeInt.t)*cacheDecode) option **)
 
 let aRP_decoder_impl sz v =
@@ -3881,69 +4158,121 @@ let aRP_decoder_impl sz v =
              (let _,y = a in y) with
      | Some a0 ->
        let b0 = let x,_ = let x,_ = a0 in x in x in
-       (match getCurrentByte test_cache test_cache_add_nat sz v
-                (let _,y = let x,_ = a0 in x in y) (let _,y = a0 in y) with
+       let idx = let _,y = let x,_ = a0 in x in y in
+       (match CstructBytestring.nth_opt sz v idx with
         | Some a1 ->
-          let b1 = let x,_ = let x,_ = a1 in x in x in
-          (match getCurrentByte test_cache test_cache_add_nat sz v
-                   (let _,y = let x,_ = a1 in x in y) (let _,y = a1 in y) with
-           | Some a2 ->
-             let b2 = let x,_ = let x,_ = a2 in x in x in
+          let a2 = (a1,(Pervasives.succ
+            idx)),(test_cache_add_nat.addD (let _,y = a0 in y)
+                    (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                    (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                    (Pervasives.succ (Pervasives.succ 0)))))))))
+          in
+          let b1 = let x,_ = let x,_ = a2 in x in x in
+          let idx0 = let _,y = let x,_ = a2 in x in y in
+          (match CstructBytestring.nth_opt sz v idx0 with
+           | Some a3 ->
+             let a4 = (a3,(Pervasives.succ
+               idx0)),(test_cache_add_nat.addD (let _,y = a2 in y)
+                        (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                        (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                        (Pervasives.succ (Pervasives.succ 0)))))))))
+             in
+             let b2 = let x,_ = let x,_ = a4 in x in x in
              (match aligned_decode_enumN (Pervasives.succ (Pervasives.succ
                       0)) (Pervasives.succ (Pervasives.succ (Pervasives.succ
                       0))) test_cache test_cache_add_nat operationCodes sz v
-                      (let _,y = let x,_ = a2 in x in y) (let _,y = a2 in y) with
-              | Some a3 ->
-                (match listAlignedDecodeM test_cache sz (fun numBytes ->
-                         getCurrentByte test_cache test_cache_add_nat numBytes)
+                      (let _,y = let x,_ = a4 in x in y) (let _,y = a4 in y) with
+              | Some a5 ->
+                (match listAlignedDecodeM test_cache sz
+                         (fun numBytes v0 idx1 c ->
+                         match CstructBytestring.nth_opt numBytes v0 idx1 with
+                         | Some a6 ->
+                           Some ((a6,(Pervasives.succ
+                             idx1)),(test_cache_add_nat.addD c
+                                      (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ (Pervasives.succ
+                                      0))))))))))
+                         | None -> None)
                          (Int64Word.wordToNat (Pervasives.succ
                            (Pervasives.succ (Pervasives.succ (Pervasives.succ
                            (Pervasives.succ (Pervasives.succ (Pervasives.succ
                            (Pervasives.succ 0)))))))) b1) v
-                         (let _,y = let x,_ = a3 in x in y)
-                         (let _,y = a3 in y) with
-                 | Some a4 ->
-                   let l = let x,_ = let x,_ = a4 in x in x in
-                   (match listAlignedDecodeM test_cache sz (fun numBytes ->
-                            getCurrentByte test_cache test_cache_add_nat
-                              numBytes)
+                         (let _,y = let x,_ = a5 in x in y)
+                         (let _,y = a5 in y) with
+                 | Some a6 ->
+                   let l = let x,_ = let x,_ = a6 in x in x in
+                   (match listAlignedDecodeM test_cache sz
+                            (fun numBytes v0 idx1 c ->
+                            match CstructBytestring.nth_opt numBytes v0 idx1 with
+                            | Some a7 ->
+                              Some ((a7,(Pervasives.succ
+                                idx1)),(test_cache_add_nat.addD c
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         0))))))))))
+                            | None -> None)
                             (Int64Word.wordToNat (Pervasives.succ
                               (Pervasives.succ (Pervasives.succ
                               (Pervasives.succ (Pervasives.succ
                               (Pervasives.succ (Pervasives.succ
                               (Pervasives.succ 0)))))))) b2) v
-                            (let _,y = let x,_ = a4 in x in y)
-                            (let _,y = a4 in y) with
-                    | Some a5 ->
-                      let l0 = let x,_ = let x,_ = a5 in x in x in
+                            (let _,y = let x,_ = a6 in x in y)
+                            (let _,y = a6 in y) with
+                    | Some a7 ->
+                      let l0 = let x,_ = let x,_ = a7 in x in x in
                       (match listAlignedDecodeM test_cache sz
-                               (fun numBytes ->
-                               getCurrentByte test_cache test_cache_add_nat
-                                 numBytes)
+                               (fun numBytes v0 idx1 c ->
+                               match CstructBytestring.nth_opt numBytes v0
+                                       idx1 with
+                               | Some a8 ->
+                                 Some ((a8,(Pervasives.succ
+                                   idx1)),(test_cache_add_nat.addD c
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            0))))))))))
+                               | None -> None)
                                (Int64Word.wordToNat (Pervasives.succ
                                  (Pervasives.succ (Pervasives.succ
                                  (Pervasives.succ (Pervasives.succ
                                  (Pervasives.succ (Pervasives.succ
                                  (Pervasives.succ 0)))))))) b1) v
-                               (let _,y = let x,_ = a5 in x in y)
-                               (let _,y = a5 in y) with
-                       | Some a6 ->
-                         let l1 = let x,_ = let x,_ = a6 in x in x in
+                               (let _,y = let x,_ = a7 in x in y)
+                               (let _,y = a7 in y) with
+                       | Some a8 ->
+                         let l1 = let x,_ = let x,_ = a8 in x in x in
                          (match listAlignedDecodeM test_cache sz
-                                  (fun numBytes ->
-                                  getCurrentByte test_cache
-                                    test_cache_add_nat numBytes)
+                                  (fun numBytes v0 idx1 c ->
+                                  match CstructBytestring.nth_opt numBytes v0
+                                          idx1 with
+                                  | Some a9 ->
+                                    Some ((a9,(Pervasives.succ
+                                      idx1)),(test_cache_add_nat.addD c
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ 0))))))))))
+                                  | None -> None)
                                   (Int64Word.wordToNat (Pervasives.succ
                                     (Pervasives.succ (Pervasives.succ
                                     (Pervasives.succ (Pervasives.succ
                                     (Pervasives.succ (Pervasives.succ
                                     (Pervasives.succ 0)))))))) b2) v
-                                  (let _,y = let x,_ = a6 in x in y)
-                                  (let _,y = a6 in y) with
-                          | Some a7 ->
-                            let l2 = let x,_ = let x,_ = a7 in x in x in
-                            let idx = let _,y = let x,_ = a7 in x in y in
-                            let c = let _,y = a7 in y in
+                                  (let _,y = let x,_ = a8 in x in y)
+                                  (let _,y = a8 in y) with
+                          | Some a9 ->
+                            let l2 = let x,_ = let x,_ = a9 in x in x in
+                            let idx1 = let _,y = let x,_ = a9 in x in y in
+                            let c = let _,y = a9 in y in
                             if (&&)
                                  ((&&)
                                    ((&&)
@@ -3953,7 +4282,7 @@ let aRP_decoder_impl sz v =
                                          (Pervasives.succ (Pervasives.succ
                                          (Pervasives.succ (Pervasives.succ
                                          (Pervasives.succ 0))))))))
-                                         (ArrayVector.nth (Pervasives.succ
+                                         (StackVector.nth (Pervasives.succ
                                            (Pervasives.succ (Pervasives.succ
                                            0))) hardSizeCodes b)))
                                      ((&&)
@@ -3964,7 +4293,7 @@ let aRP_decoder_impl sz v =
                                            (Pervasives.succ (Pervasives.succ
                                            (Pervasives.succ (Pervasives.succ
                                            0))))))))
-                                           (ArrayVector.nth (Pervasives.succ
+                                           (StackVector.nth (Pervasives.succ
                                              (Pervasives.succ 0))
                                              protSizeCodes b0)))
                                        ((&&)
@@ -3978,7 +4307,7 @@ let aRP_decoder_impl sz v =
                                              (Pervasives.succ
                                              (Pervasives.succ
                                              (Pervasives.succ 0))))))))
-                                             (ArrayVector.nth
+                                             (StackVector.nth
                                                (Pervasives.succ
                                                (Pervasives.succ
                                                (Pervasives.succ 0)))
@@ -3993,7 +4322,7 @@ let aRP_decoder_impl sz v =
                                              (Pervasives.succ
                                              (Pervasives.succ
                                              (Pervasives.succ 0))))))))
-                                             (ArrayVector.nth
+                                             (StackVector.nth
                                                (Pervasives.succ
                                                (Pervasives.succ 0))
                                                protSizeCodes b0))))))
@@ -4002,7 +4331,7 @@ let aRP_decoder_impl sz v =
                                      (Pervasives.succ (Pervasives.succ
                                      (Pervasives.succ (Pervasives.succ
                                      (Pervasives.succ 0))))))))
-                                     (ArrayVector.nth (Pervasives.succ
+                                     (StackVector.nth (Pervasives.succ
                                        (Pervasives.succ (Pervasives.succ 0)))
                                        hardSizeCodes b) b1))
                                  (Int64Word.weqb (Pervasives.succ
@@ -4010,15 +4339,15 @@ let aRP_decoder_impl sz v =
                                    (Pervasives.succ (Pervasives.succ
                                    (Pervasives.succ (Pervasives.succ
                                    (Pervasives.succ 0))))))))
-                                   (ArrayVector.nth (Pervasives.succ
+                                   (StackVector.nth (Pervasives.succ
                                      (Pervasives.succ 0)) protSizeCodes b0)
                                    b2)
                             then Some (({ hardType = b; protType = b0;
                                    operation =
-                                   (let x,_ = let x,_ = a3 in x in x);
+                                   (let x,_ = let x,_ = a5 in x in x);
                                    senderHardAddress = l; senderProtAddress =
                                    l0; targetHardAddress = l1;
-                                   targetProtAddress = l2 },idx),c)
+                                   targetProtAddress = l2 },idx1),c)
                             else None
                           | None -> None)
                        | None -> None)
@@ -4076,10 +4405,10 @@ let destAddress x = x.destAddress
 
 let options x = x.options
 
-(** val protocolTypeCodes : Int64Word.t ArrayVector.storage_t **)
+(** val protocolTypeCodes : Int64Word.t StackVector.t **)
 
 let protocolTypeCodes =
-  ArrayVector.cons ((Int64Word.ws (true, (Pervasives.succ (Pervasives.succ
+  StackVector.cons ((Int64Word.ws (true, (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ 0))))))), (Int64Word.ws (false, (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -4091,7 +4420,7 @@ let protocolTypeCodes =
     (false, (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws (false,
     (Pervasives.succ 0), (Int64Word.ws (false, 0,
     (Int64Word.w0))))))))))))))))), (Pervasives.succ (Pervasives.succ 0)),
-    (ArrayVector.cons ((Int64Word.ws (false, (Pervasives.succ
+    (StackVector.cons ((Int64Word.ws (false, (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ 0))))))), (Int64Word.ws (true,
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -4102,7 +4431,7 @@ let protocolTypeCodes =
     (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))),
     (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ 0)),
     (Int64Word.ws (false, (Pervasives.succ 0), (Int64Word.ws (false, 0,
-    (Int64Word.w0))))))))))))))))), (Pervasives.succ 0), (ArrayVector.cons
+    (Int64Word.w0))))))))))))))))), (Pervasives.succ 0), (StackVector.cons
     ((Int64Word.ws (true, (Pervasives.succ (Pervasives.succ (Pervasives.succ
     (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
     0))))))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
@@ -4114,7 +4443,7 @@ let protocolTypeCodes =
     (Pervasives.succ (Pervasives.succ 0))), (Int64Word.ws (false,
     (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws (false,
     (Pervasives.succ 0), (Int64Word.ws (false, 0,
-    (Int64Word.w0))))))))))))))))), 0, ArrayVector.empty ())))))
+    (Int64Word.w0))))))))))))))))), 0, StackVector.empty ())))))
 
 (** val iPv4_Packet_Header_Len : iPv4_Packet -> OCamlNativeInt.t **)
 
@@ -4123,132 +4452,876 @@ let iPv4_Packet_Header_Len ip4 =
     (Pervasives.succ 0))))) (length ip4.options)
 
 (** val iPv4_encoder_impl :
-    OCamlNativeInt.t -> char ArrayVector.storage_t -> iPv4_Packet -> ((char
-    ArrayVector.storage_t*OCamlNativeInt.t)*cacheFormat) option **)
+    OCamlNativeInt.t -> CstructBytestring.storage_t -> iPv4_Packet ->
+    ((CstructBytestring.storage_t*OCamlNativeInt.t)*cacheFormat) option **)
 
 let iPv4_encoder_impl sz v r =
-  match match setCurrentByte test_cache test_cache_add_nat sz v 0
-                (Int64Word.combine (Pervasives.succ (Pervasives.succ
-                  (Pervasives.succ (Pervasives.succ 0))))
-                  (Int64Word.natToWord (Pervasives.succ (Pervasives.succ
+  match let idx = 0 in
+        if Nat.ltb idx sz
+        then let a =
+               ((CstructBytestring.set_nth sz v idx
+                  (Int64Word.combine (Pervasives.succ (Pervasives.succ
                     (Pervasives.succ (Pervasives.succ 0))))
-                    (iPv4_Packet_Header_Len r)) (Pervasives.succ
-                  (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))
-                  (Int64Word.natToWord (Pervasives.succ (Pervasives.succ
-                    (Pervasives.succ (Pervasives.succ 0)))) (Pervasives.succ
-                    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))
-                (Obj.magic ()) with
-        | Some a ->
-          (match setCurrentByte test_cache test_cache_add_nat sz
-                   (let x,_ = let x,_ = a in x in x)
-                   (let _,y = let x,_ = a in x in y)
+                    (Int64Word.natToWord (Pervasives.succ (Pervasives.succ
+                      (Pervasives.succ (Pervasives.succ 0))))
+                      (iPv4_Packet_Header_Len r)) (Pervasives.succ
+                    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))
+                    (Int64Word.natToWord (Pervasives.succ (Pervasives.succ
+                      (Pervasives.succ (Pervasives.succ 0))))
+                      (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                      (Pervasives.succ 0))))))),(Pervasives.succ
+               idx)),(test_cache_add_nat.addE (Obj.magic ()) (Pervasives.succ
+                       (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                       (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                       (Pervasives.succ 0)))))))))
+             in
+             let idx0 = let _,y = let x,_ = a in x in y in
+             if Nat.ltb idx0 sz
+             then let a0 =
+                    ((CstructBytestring.set_nth sz
+                       (let x,_ = let x,_ = a in x in x) idx0
+                       (Int64Word.wzero (Pervasives.succ (Pervasives.succ
+                         (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                         (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                         0)))))))))),(Pervasives.succ
+                    idx0)),(test_cache_add_nat.addE (let _,y = a in y)
+                             (Pervasives.succ (Pervasives.succ
+                             (Pervasives.succ (Pervasives.succ
+                             (Pervasives.succ (Pervasives.succ
+                             (Pervasives.succ (Pervasives.succ 0)))))))))
+                  in
+                  let idx1 = let _,y = let x,_ = a0 in x in y in
+                  (match let w = r.totalLength in
+                         if Nat.ltb idx1 sz
+                         then let a1 =
+                                ((CstructBytestring.set_nth sz
+                                   (let x,_ = let x,_ = a0 in x in x) idx1
+                                   (Int64Word.split1' (Pervasives.succ
+                                     (Pervasives.succ (Pervasives.succ
+                                     (Pervasives.succ (Pervasives.succ
+                                     (Pervasives.succ (Pervasives.succ
+                                     (Pervasives.succ 0))))))))
+                                     (mul (Pervasives.succ 0)
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       0))))))))) w)),(Pervasives.succ
+                                idx1)),(test_cache_add_nat.addE
+                                         (let _,y = a0 in y) (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ 0)))))))))
+                              in
+                              let idx2 = let _,y = let x,_ = a1 in x in y in
+                              let ce = let _,y = a1 in y in
+                              if Nat.ltb idx2 sz
+                              then Some
+                                     (((CstructBytestring.set_nth sz
+                                         (let x,_ = let x,_ = a1 in x in x)
+                                         idx2
+                                         (Int64Word.split2' (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ 0))))))))
+                                           (mul (Pervasives.succ 0)
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ 0))))))))) w)),(Pervasives.succ
+                                     idx2)),(test_cache_add_nat.addE ce
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ 0))))))))))
+                              else None
+                         else None with
+                   | Some a1 ->
+                     let idx2 = let _,y = let x,_ = a1 in x in y in
+                     (match let w = r.iD in
+                            if Nat.ltb idx2 sz
+                            then let a2 =
+                                   ((CstructBytestring.set_nth sz
+                                      (let x,_ = let x,_ = a1 in x in x) idx2
+                                      (Int64Word.split1' (Pervasives.succ
+                                        (Pervasives.succ (Pervasives.succ
+                                        (Pervasives.succ (Pervasives.succ
+                                        (Pervasives.succ (Pervasives.succ
+                                        (Pervasives.succ 0))))))))
+                                        (mul (Pervasives.succ 0)
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          0))))))))) w)),(Pervasives.succ
+                                   idx2)),(test_cache_add_nat.addE
+                                            (let _,y = a1 in y)
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            0)))))))))
+                                 in
+                                 let idx3 = let _,y = let x,_ = a2 in x in y
+                                 in
+                                 let ce = let _,y = a2 in y in
+                                 if Nat.ltb idx3 sz
+                                 then Some
+                                        (((CstructBytestring.set_nth sz
+                                            (let x,_ = let x,_ = a2 in x in x)
+                                            idx3
+                                            (Int64Word.split2'
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ 0))))))))
+                                              (mul (Pervasives.succ 0)
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ 0))))))))) w)),(Pervasives.succ
+                                        idx3)),(test_cache_add_nat.addE ce
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ 0))))))))))
+                                 else None
+                            else None with
+                      | Some a2 ->
+                        let idx3 = let _,y = let x,_ = a2 in x in y in
+                        (match let w =
+                                 Int64Word.combine (Pervasives.succ
+                                   (Pervasives.succ (Pervasives.succ
+                                   (Pervasives.succ (Pervasives.succ
+                                   (Pervasives.succ (Pervasives.succ
+                                   (Pervasives.succ (Pervasives.succ
+                                   (Pervasives.succ (Pervasives.succ
+                                   (Pervasives.succ (Pervasives.succ
+                                   0))))))))))))) r.fragmentOffset
+                                   (add (Pervasives.succ 0)
+                                     (add (Pervasives.succ 0)
+                                       (Pervasives.succ 0)))
+                                   (Int64Word.combine (Pervasives.succ 0)
+                                     (Int64Word.ws (r.mF, 0, (Int64Word.w0)))
+                                     (add (Pervasives.succ 0)
+                                       (Pervasives.succ 0))
+                                     (Int64Word.combine (Pervasives.succ 0)
+                                       (Int64Word.ws (r.dF, 0,
+                                       (Int64Word.w0))) (Pervasives.succ 0)
+                                       (Int64Word.wzero (Pervasives.succ 0))))
+                               in
+                               if Nat.ltb idx3 sz
+                               then let a3 =
+                                      ((CstructBytestring.set_nth sz
+                                         (let x,_ = let x,_ = a2 in x in x)
+                                         idx3
+                                         (Int64Word.split1' (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ 0))))))))
+                                           (mul (Pervasives.succ 0)
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ 0))))))))) w)),(Pervasives.succ
+                                      idx3)),(test_cache_add_nat.addE
+                                               (let _,y = a2 in y)
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ 0)))))))))
+                                    in
+                                    let idx4 =
+                                      let _,y = let x,_ = a3 in x in y
+                                    in
+                                    let ce = let _,y = a3 in y in
+                                    if Nat.ltb idx4 sz
+                                    then Some
+                                           (((CstructBytestring.set_nth sz
+                                               (let x,_ = let x,_ = a3 in x in
+                                                x) idx4
+                                               (Int64Word.split2'
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ 0))))))))
+                                                 (mul (Pervasives.succ 0)
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ 0)))))))))
+                                                 w)),(Pervasives.succ
+                                           idx4)),(test_cache_add_nat.addE ce
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    0))))))))))
+                                    else None
+                               else None with
+                         | Some a3 ->
+                           let idx4 = let _,y = let x,_ = a3 in x in y in
+                           if Nat.ltb idx4 sz
+                           then let a4 =
+                                  ((CstructBytestring.set_nth sz
+                                     (let x,_ = let x,_ = a3 in x in x) idx4
+                                     r.tTL),(Pervasives.succ
+                                  idx4)),(test_cache_add_nat.addE
+                                           (let _,y = a3 in y)
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           0)))))))))
+                                in
+                                let idx5 = let _,y = let x,_ = a4 in x in y in
+                                if Nat.ltb idx5 sz
+                                then Some
+                                       (((CstructBytestring.set_nth sz
+                                           (let x,_ = let x,_ = a4 in x in x)
+                                           idx5
+                                           (StackVector.nth (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ 0)))
+                                             protocolTypeCodes r.protocol)),(Pervasives.succ
+                                       idx5)),(test_cache_add_nat.addE
+                                                (let _,y = a4 in y)
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ 0))))))))))
+                                else None
+                           else None
+                         | None -> None)
+                      | None -> None)
+                   | None -> None)
+             else None
+        else None with
+  | Some a ->
+    let idx = let _,y = let x,_ = a in x in y in
+    if Nat.ltb idx sz
+    then let a0 =
+           ((CstructBytestring.set_nth sz (let x,_ = let x,_ = a in x in x)
+              idx
+              (Int64Word.wzero (Pervasives.succ (Pervasives.succ
+                (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))))))),(Pervasives.succ
+           idx)),(test_cache_add_nat.addE (let _,y = a in y) (Pervasives.succ
+                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                   (Pervasives.succ 0)))))))))
+         in
+         let idx0 = let _,y = let x,_ = a0 in x in y in
+         if Nat.ltb idx0 sz
+         then let a1 =
+                ((CstructBytestring.set_nth sz
+                   (let x,_ = let x,_ = a0 in x in x) idx0
                    (Int64Word.wzero (Pervasives.succ (Pervasives.succ
                      (Pervasives.succ (Pervasives.succ (Pervasives.succ
                      (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                     0))))))))) (let _,y = a in y) with
-           | Some a0 ->
-             (match setCurrentBytes test_cache test_cache_add_nat sz
-                      (Pervasives.succ (Pervasives.succ 0))
-                      (let x,_ = let x,_ = a0 in x in x)
-                      (let _,y = let x,_ = a0 in x in y) r.totalLength
-                      (let _,y = a0 in y) with
-              | Some a1 ->
-                (match setCurrentBytes test_cache test_cache_add_nat sz
-                         (Pervasives.succ (Pervasives.succ 0))
-                         (let x,_ = let x,_ = a1 in x in x)
-                         (let _,y = let x,_ = a1 in x in y) r.iD
-                         (let _,y = a1 in y) with
-                 | Some a2 ->
-                   (match setCurrentBytes test_cache test_cache_add_nat sz
-                            (Pervasives.succ (Pervasives.succ 0))
-                            (let x,_ = let x,_ = a2 in x in x)
-                            (let _,y = let x,_ = a2 in x in y)
-                            (Int64Word.combine (Pervasives.succ
-                              (Pervasives.succ (Pervasives.succ
-                              (Pervasives.succ (Pervasives.succ
-                              (Pervasives.succ (Pervasives.succ
-                              (Pervasives.succ (Pervasives.succ
-                              (Pervasives.succ (Pervasives.succ
-                              (Pervasives.succ (Pervasives.succ
-                              0))))))))))))) r.fragmentOffset
-                              (add (Pervasives.succ 0)
-                                (add (Pervasives.succ 0) (Pervasives.succ 0)))
-                              (Int64Word.combine (Pervasives.succ 0)
-                                (Int64Word.ws (r.mF, 0, (Int64Word.w0)))
-                                (add (Pervasives.succ 0) (Pervasives.succ 0))
-                                (Int64Word.combine (Pervasives.succ 0)
-                                  (Int64Word.ws (r.dF, 0, (Int64Word.w0)))
-                                  (Pervasives.succ 0)
-                                  (Int64Word.wzero (Pervasives.succ 0)))))
-                            (let _,y = a2 in y) with
-                    | Some a3 ->
-                      (match setCurrentByte test_cache test_cache_add_nat sz
-                               (let x,_ = let x,_ = a3 in x in x)
-                               (let _,y = let x,_ = a3 in x in y) r.tTL
-                               (let _,y = a3 in y) with
-                       | Some a4 ->
-                         setCurrentByte test_cache test_cache_add_nat sz
-                           (let x,_ = let x,_ = a4 in x in x)
-                           (let _,y = let x,_ = a4 in x in y)
-                           (ArrayVector.nth (Pervasives.succ (Pervasives.succ
-                             (Pervasives.succ 0))) protocolTypeCodes
-                             r.protocol) (let _,y = a4 in y)
-                       | None -> None)
-                    | None -> None)
-                 | None -> None)
-              | None -> None)
-           | None -> None)
-        | None -> None with
-  | Some a ->
-    (match setCurrentByte test_cache test_cache_add_nat sz
-             (let x,_ = let x,_ = a in x in x)
-             (let _,y = let x,_ = a in x in y)
-             (Int64Word.wzero (Pervasives.succ (Pervasives.succ
-               (Pervasives.succ (Pervasives.succ (Pervasives.succ
-               (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))))))
-             (let _,y = a in y) with
-     | Some a0 ->
-       (match setCurrentByte test_cache test_cache_add_nat sz
-                (let x,_ = let x,_ = a0 in x in x)
-                (let _,y = let x,_ = a0 in x in y)
-                (Int64Word.wzero (Pervasives.succ (Pervasives.succ
-                  (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                  (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                  0))))))))) (let _,y = a0 in y) with
-        | Some a1 ->
-          (match match setCurrentBytes test_cache test_cache_add_nat sz
+                     0)))))))))),(Pervasives.succ
+                idx0)),(test_cache_add_nat.addE (let _,y = a0 in y)
                          (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                         (Pervasives.succ 0))))
-                         (let x,_ = let x,_ = a1 in x in x)
-                         (let _,y = let x,_ = a1 in x in y) r.sourceAddress
-                         (let _,y = a1 in y) with
-                 | Some a2 ->
-                   (match setCurrentBytes test_cache test_cache_add_nat sz
-                            (Pervasives.succ (Pervasives.succ
-                            (Pervasives.succ (Pervasives.succ 0))))
-                            (let x,_ = let x,_ = a2 in x in x)
-                            (let _,y = let x,_ = a2 in x in y) r.destAddress
-                            (let _,y = a2 in y) with
-                    | Some a3 ->
-                      alignedEncodeList test_cache (fun n0 ->
-                        setCurrentBytes test_cache test_cache_add_nat n0
-                          (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                          (Pervasives.succ 0))))) sz
-                        (let x,_ = let x,_ = a3 in x in x)
-                        (let _,y = let x,_ = a3 in x in y) r.options
-                        (let _,y = a3 in y)
-                    | None -> None)
-                 | None -> None with
-           | Some a2 ->
-             calculate_IPChecksum sz (let x,_ = let x,_ = a2 in x in x)
-               (let _,y = let x,_ = a2 in x in y) r (let _,y = a2 in y)
-           | None -> None)
-        | None -> None)
-     | None -> None)
+                         (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                         (Pervasives.succ (Pervasives.succ 0)))))))))
+              in
+              let idx1 = let _,y = let x,_ = a1 in x in y in
+              (match match let w = r.sourceAddress in
+                           if Nat.ltb idx1 sz
+                           then let a2 =
+                                  ((CstructBytestring.set_nth sz
+                                     (let x,_ = let x,_ = a1 in x in x) idx1
+                                     (Int64Word.split1' (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ 0))))))))
+                                       (mul (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ 0)))
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         0))))))))) w)),(Pervasives.succ
+                                  idx1)),(test_cache_add_nat.addE
+                                           (let _,y = a1 in y)
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           0)))))))))
+                                in
+                                let idx2 = let _,y = let x,_ = a2 in x in y in
+                                let s =
+                                  Int64Word.split2' (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ 0))))))))
+                                    (mul (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ 0))) (Pervasives.succ
+                                      (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ 0))))))))) w
+                                in
+                                let c = let _,y = a2 in y in
+                                if Nat.ltb idx2 sz
+                                then let a3 =
+                                       ((CstructBytestring.set_nth sz
+                                          (let x,_ = let x,_ = a2 in x in x)
+                                          idx2
+                                          (Int64Word.split1' (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ 0))))))))
+                                            (mul (Pervasives.succ
+                                              (Pervasives.succ 0))
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ 0))))))))) s)),(Pervasives.succ
+                                       idx2)),(test_cache_add_nat.addE c
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ 0)))))))))
+                                     in
+                                     let idx3 =
+                                       let _,y = let x,_ = a3 in x in y
+                                     in
+                                     let s0 =
+                                       Int64Word.split2' (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ 0))))))))
+                                         (mul (Pervasives.succ
+                                           (Pervasives.succ 0))
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           0))))))))) s
+                                     in
+                                     let c0 = let _,y = a3 in y in
+                                     if Nat.ltb idx3 sz
+                                     then let a4 =
+                                            ((CstructBytestring.set_nth sz
+                                               (let x,_ = let x,_ = a3 in x in
+                                                x) idx3
+                                               (Int64Word.split1'
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ 0))))))))
+                                                 (mul (Pervasives.succ 0)
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ 0)))))))))
+                                                 s0)),(Pervasives.succ
+                                            idx3)),(test_cache_add_nat.addE
+                                                     c0 (Pervasives.succ
+                                                     (Pervasives.succ
+                                                     (Pervasives.succ
+                                                     (Pervasives.succ
+                                                     (Pervasives.succ
+                                                     (Pervasives.succ
+                                                     (Pervasives.succ
+                                                     (Pervasives.succ
+                                                     0)))))))))
+                                          in
+                                          let idx4 =
+                                            let _,y = let x,_ = a4 in x in y
+                                          in
+                                          let ce = let _,y = a4 in y in
+                                          if Nat.ltb idx4 sz
+                                          then Some
+                                                 (((CstructBytestring.set_nth
+                                                     sz
+                                                     (let x,_ =
+                                                        let x,_ = a4 in x
+                                                      in
+                                                      x) idx4
+                                                     (Int64Word.split2'
+                                                       (Pervasives.succ
+                                                       (Pervasives.succ
+                                                       (Pervasives.succ
+                                                       (Pervasives.succ
+                                                       (Pervasives.succ
+                                                       (Pervasives.succ
+                                                       (Pervasives.succ
+                                                       (Pervasives.succ
+                                                       0))))))))
+                                                       (mul (Pervasives.succ
+                                                         0) (Pervasives.succ
+                                                         (Pervasives.succ
+                                                         (Pervasives.succ
+                                                         (Pervasives.succ
+                                                         (Pervasives.succ
+                                                         (Pervasives.succ
+                                                         (Pervasives.succ
+                                                         (Pervasives.succ
+                                                         0))))))))) s0)),(Pervasives.succ
+                                                 idx4)),(test_cache_add_nat.addE
+                                                          ce (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          0))))))))))
+                                          else None
+                                     else None
+                                else None
+                           else None with
+                     | Some a2 ->
+                       let idx2 = let _,y = let x,_ = a2 in x in y in
+                       (match let w = r.destAddress in
+                              if Nat.ltb idx2 sz
+                              then let a3 =
+                                     ((CstructBytestring.set_nth sz
+                                        (let x,_ = let x,_ = a2 in x in x)
+                                        idx2
+                                        (Int64Word.split1' (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ 0))))))))
+                                          (mul (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            0))) (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ 0))))))))) w)),(Pervasives.succ
+                                     idx2)),(test_cache_add_nat.addE
+                                              (let _,y = a2 in y)
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ 0)))))))))
+                                   in
+                                   let idx3 = let _,y = let x,_ = a3 in x in y
+                                   in
+                                   let s =
+                                     Int64Word.split2' (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ 0))))))))
+                                       (mul (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ 0)))
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         0))))))))) w
+                                   in
+                                   let c = let _,y = a3 in y in
+                                   if Nat.ltb idx3 sz
+                                   then let a4 =
+                                          ((CstructBytestring.set_nth sz
+                                             (let x,_ = let x,_ = a3 in x in x)
+                                             idx3
+                                             (Int64Word.split1'
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ 0))))))))
+                                               (mul (Pervasives.succ
+                                                 (Pervasives.succ 0))
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ 0)))))))))
+                                               s)),(Pervasives.succ
+                                          idx3)),(test_cache_add_nat.addE c
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ 0)))))))))
+                                        in
+                                        let idx4 =
+                                          let _,y = let x,_ = a4 in x in y
+                                        in
+                                        let s0 =
+                                          Int64Word.split2' (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ 0))))))))
+                                            (mul (Pervasives.succ
+                                              (Pervasives.succ 0))
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ 0))))))))) s
+                                        in
+                                        let c0 = let _,y = a4 in y in
+                                        if Nat.ltb idx4 sz
+                                        then let a5 =
+                                               ((CstructBytestring.set_nth sz
+                                                  (let x,_ = let x,_ = a4 in x
+                                                   in
+                                                   x) idx4
+                                                  (Int64Word.split1'
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    0))))))))
+                                                    (mul (Pervasives.succ 0)
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      0))))))))) s0)),(Pervasives.succ
+                                               idx4)),(test_cache_add_nat.addE
+                                                        c0 (Pervasives.succ
+                                                        (Pervasives.succ
+                                                        (Pervasives.succ
+                                                        (Pervasives.succ
+                                                        (Pervasives.succ
+                                                        (Pervasives.succ
+                                                        (Pervasives.succ
+                                                        (Pervasives.succ
+                                                        0)))))))))
+                                             in
+                                             let idx5 =
+                                               let _,y = let x,_ = a5 in x in
+                                               y
+                                             in
+                                             let ce = let _,y = a5 in y in
+                                             if Nat.ltb idx5 sz
+                                             then Some
+                                                    (((CstructBytestring.set_nth
+                                                        sz
+                                                        (let x,_ =
+                                                           let x,_ = a5 in x
+                                                         in
+                                                         x) idx5
+                                                        (Int64Word.split2'
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          0))))))))
+                                                          (mul
+                                                            (Pervasives.succ
+                                                            0)
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            0))))))))) s0)),(Pervasives.succ
+                                                    idx5)),(test_cache_add_nat.addE
+                                                             ce
+                                                             (Pervasives.succ
+                                                             (Pervasives.succ
+                                                             (Pervasives.succ
+                                                             (Pervasives.succ
+                                                             (Pervasives.succ
+                                                             (Pervasives.succ
+                                                             (Pervasives.succ
+                                                             (Pervasives.succ
+                                                             0))))))))))
+                                             else None
+                                        else None
+                                   else None
+                              else None with
+                        | Some a3 ->
+                          alignedEncodeList test_cache (fun n0 v0 idx3 w c ->
+                            if Nat.ltb idx3 n0
+                            then let a4 =
+                                   ((CstructBytestring.set_nth n0 v0 idx3
+                                      (Int64Word.split1' (Pervasives.succ
+                                        (Pervasives.succ (Pervasives.succ
+                                        (Pervasives.succ (Pervasives.succ
+                                        (Pervasives.succ (Pervasives.succ
+                                        (Pervasives.succ 0))))))))
+                                        (mul (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          0))) (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ 0))))))))) w)),(Pervasives.succ
+                                   idx3)),(test_cache_add_nat.addE c
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            0)))))))))
+                                 in
+                                 let idx4 = let _,y = let x,_ = a4 in x in y
+                                 in
+                                 let s =
+                                   Int64Word.split2' (Pervasives.succ
+                                     (Pervasives.succ (Pervasives.succ
+                                     (Pervasives.succ (Pervasives.succ
+                                     (Pervasives.succ (Pervasives.succ
+                                     (Pervasives.succ 0))))))))
+                                     (mul (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ 0))) (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ 0))))))))) w
+                                 in
+                                 let c0 = let _,y = a4 in y in
+                                 if Nat.ltb idx4 n0
+                                 then let a5 =
+                                        ((CstructBytestring.set_nth n0
+                                           (let x,_ = let x,_ = a4 in x in x)
+                                           idx4
+                                           (Int64Word.split1'
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ 0))))))))
+                                             (mul (Pervasives.succ
+                                               (Pervasives.succ 0))
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ 0))))))))) s)),(Pervasives.succ
+                                        idx4)),(test_cache_add_nat.addE c0
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ 0)))))))))
+                                      in
+                                      let idx5 =
+                                        let _,y = let x,_ = a5 in x in y
+                                      in
+                                      let s0 =
+                                        Int64Word.split2' (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ 0))))))))
+                                          (mul (Pervasives.succ
+                                            (Pervasives.succ 0))
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            0))))))))) s
+                                      in
+                                      let c1 = let _,y = a5 in y in
+                                      if Nat.ltb idx5 n0
+                                      then let a6 =
+                                             ((CstructBytestring.set_nth n0
+                                                (let x,_ = let x,_ = a5 in x
+                                                 in
+                                                 x) idx5
+                                                (Int64Word.split1'
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ 0))))))))
+                                                  (mul (Pervasives.succ 0)
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    0))))))))) s0)),(Pervasives.succ
+                                             idx5)),(test_cache_add_nat.addE
+                                                      c1 (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      0)))))))))
+                                           in
+                                           let idx6 =
+                                             let _,y = let x,_ = a6 in x in y
+                                           in
+                                           let ce = let _,y = a6 in y in
+                                           if Nat.ltb idx6 n0
+                                           then Some
+                                                  (((CstructBytestring.set_nth
+                                                      n0
+                                                      (let x,_ =
+                                                         let x,_ = a6 in x
+                                                       in
+                                                       x) idx6
+                                                      (Int64Word.split2'
+                                                        (Pervasives.succ
+                                                        (Pervasives.succ
+                                                        (Pervasives.succ
+                                                        (Pervasives.succ
+                                                        (Pervasives.succ
+                                                        (Pervasives.succ
+                                                        (Pervasives.succ
+                                                        (Pervasives.succ
+                                                        0))))))))
+                                                        (mul (Pervasives.succ
+                                                          0) (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          0))))))))) s0)),(Pervasives.succ
+                                                  idx6)),(test_cache_add_nat.addE
+                                                           ce
+                                                           (Pervasives.succ
+                                                           (Pervasives.succ
+                                                           (Pervasives.succ
+                                                           (Pervasives.succ
+                                                           (Pervasives.succ
+                                                           (Pervasives.succ
+                                                           (Pervasives.succ
+                                                           (Pervasives.succ
+                                                           0))))))))))
+                                           else None
+                                      else None
+                                 else None
+                            else None) sz (let x,_ = let x,_ = a3 in x in x)
+                            (let _,y = let x,_ = a3 in x in y) r.options
+                            (let _,y = a3 in y)
+                        | None -> None)
+                     | None -> None with
+               | Some a2 ->
+                 calculate_IPChecksum sz (let x,_ = let x,_ = a2 in x in x)
+                   (let _,y = let x,_ = a2 in x in y) r (let _,y = a2 in y)
+               | None -> None)
+         else None
+    else None
   | None -> None
 
 (** val iPv4_decoder_impl :
-    OCamlNativeInt.t -> char ArrayVector.storage_t ->
+    OCamlNativeInt.t -> CstructBytestring.storage_t ->
     ((iPv4_Packet*OCamlNativeInt.t)*unit) option **)
 
 let iPv4_decoder_impl sz v =
@@ -4257,7 +5330,7 @@ let iPv4_decoder_impl sz v =
        (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
        (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
        (Pervasives.succ 0))))))))))))))))
-       (vector_checksum_bound' (Pervasives.succ (Pervasives.succ
+       (CstructBytestring.checksum_bound (Pervasives.succ (Pervasives.succ
          (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
          (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
          (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
@@ -4305,45 +5378,76 @@ let iPv4_decoder_impl sz v =
        (Int64Word.w0)))))))))))))))))))))))))))))))))
   then let idx = Obj.magic 0 in
        let c = Obj.magic () in
-       (match getCurrentByte test_cache test_cache_add_nat sz v idx c with
+       (match CstructBytestring.nth_opt sz v idx with
         | Some a ->
-          let b = let x,_ = let x,_ = a in x in x in
+          let a0 = (a,(Pervasives.succ
+            idx)),(test_cache_add_nat.addD c (Pervasives.succ
+                    (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                    (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                    (Pervasives.succ 0)))))))))
+          in
+          let b = let x,_ = let x,_ = a0 in x in x in
           (match skipCurrentByte test_cache test_cache_add_nat sz v
-                   (let _,y = let x,_ = a in x in y) (let _,y = a in y) with
-           | Some a0 ->
-             (match getCurrentByte test_cache test_cache_add_nat sz v
-                      (let _,y = let x,_ = a0 in x in y) (let _,y = a0 in y) with
-              | Some a1 ->
-                (match getCurrentByte test_cache test_cache_add_nat sz v
-                         (let _,y = let x,_ = a1 in x in y)
-                         (let _,y = a1 in y) with
-                 | Some a2 ->
-                   let a3 =
+                   (let _,y = let x,_ = a0 in x in y) (let _,y = a0 in y) with
+           | Some a1 ->
+             let idx0 = let _,y = let x,_ = a1 in x in y in
+             (match CstructBytestring.nth_opt sz v idx0 with
+              | Some a2 ->
+                let a3 = (a2,(Pervasives.succ
+                  idx0)),(test_cache_add_nat.addD (let _,y = a1 in y)
+                           (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                           (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                           (Pervasives.succ (Pervasives.succ 0)))))))))
+                in
+                let idx1 = let _,y = let x,_ = a3 in x in y in
+                (match CstructBytestring.nth_opt sz v idx1 with
+                 | Some a4 ->
+                   let a5 = (a4,(Pervasives.succ
+                     idx1)),(test_cache_add_nat.addD (let _,y = a3 in y)
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ 0)))))))))
+                   in
+                   let a6 =
                      ((Int64Word.append (Pervasives.succ (Pervasives.succ
                         (Pervasives.succ (Pervasives.succ (Pervasives.succ
                         (Pervasives.succ (Pervasives.succ (Pervasives.succ
                         0)))))))) (Pervasives.succ (Pervasives.succ
                         (Pervasives.succ (Pervasives.succ (Pervasives.succ
                         (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                        0)))))))) (let x,_ = let x,_ = a2 in x in x)
-                        (let x,_ = let x,_ = a1 in x in x)),(let _,y =
-                                                               let x,_ = a2 in
+                        0)))))))) (let x,_ = let x,_ = a5 in x in x)
+                        (let x,_ = let x,_ = a3 in x in x)),(let _,y =
+                                                               let x,_ = a5 in
                                                                x
                                                              in
-                                                             y)),(let _,y = a2
+                                                             y)),(let _,y = a5
                                                                   in
                                                                   y)
                    in
-                   let w = let x,_ = let x,_ = a3 in x in x in
-                   (match getCurrentByte test_cache test_cache_add_nat sz v
-                            (let _,y = let x,_ = a3 in x in y)
-                            (let _,y = a3 in y) with
-                    | Some a4 ->
-                      (match getCurrentByte test_cache test_cache_add_nat sz
-                               v (let _,y = let x,_ = a4 in x in y)
-                               (let _,y = a4 in y) with
-                       | Some a5 ->
-                         let a6 =
+                   let w = let x,_ = let x,_ = a6 in x in x in
+                   let idx2 = let _,y = let x,_ = a6 in x in y in
+                   (match CstructBytestring.nth_opt sz v idx2 with
+                    | Some a7 ->
+                      let a8 = (a7,(Pervasives.succ
+                        idx2)),(test_cache_add_nat.addD (let _,y = a6 in y)
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ 0)))))))))
+                      in
+                      let idx3 = let _,y = let x,_ = a8 in x in y in
+                      (match CstructBytestring.nth_opt sz v idx3 with
+                       | Some a9 ->
+                         let a10 = (a9,(Pervasives.succ
+                           idx3)),(test_cache_add_nat.addD
+                                    (let _,y = a8 in y) (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ 0)))))))))
+                         in
+                         let a11 =
                            ((Int64Word.append (Pervasives.succ
                               (Pervasives.succ (Pervasives.succ
                               (Pervasives.succ (Pervasives.succ
@@ -4353,26 +5457,40 @@ let iPv4_decoder_impl sz v =
                               (Pervasives.succ (Pervasives.succ
                               (Pervasives.succ (Pervasives.succ
                               (Pervasives.succ 0))))))))
-                              (let x,_ = let x,_ = a5 in x in x)
-                              (let x,_ = let x,_ = a4 in x in x)),(let _,y =
+                              (let x,_ = let x,_ = a10 in x in x)
+                              (let x,_ = let x,_ = a8 in x in x)),(let _,y =
                                                                     let x,_ =
-                                                                    a5
+                                                                    a10
                                                                     in
                                                                     x
                                                                    in
                                                                    y)),
-                           (let _,y = a5 in y)
+                           (let _,y = a10 in y)
                          in
-                         (match getCurrentByte test_cache test_cache_add_nat
-                                  sz v (let _,y = let x,_ = a6 in x in y)
-                                  (let _,y = a6 in y) with
-                          | Some a7 ->
-                            (match getCurrentByte test_cache
-                                     test_cache_add_nat sz v
-                                     (let _,y = let x,_ = a7 in x in y)
-                                     (let _,y = a7 in y) with
-                             | Some a8 ->
-                               let a9 =
+                         let idx4 = let _,y = let x,_ = a11 in x in y in
+                         (match CstructBytestring.nth_opt sz v idx4 with
+                          | Some a12 ->
+                            let a13 = (a12,(Pervasives.succ
+                              idx4)),(test_cache_add_nat.addD
+                                       (let _,y = a11 in y) (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ 0)))))))))
+                            in
+                            let idx5 = let _,y = let x,_ = a13 in x in y in
+                            (match CstructBytestring.nth_opt sz v idx5 with
+                             | Some a14 ->
+                               let a15 = (a14,(Pervasives.succ
+                                 idx5)),(test_cache_add_nat.addD
+                                          (let _,y = a13 in y)
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          0)))))))))
+                               in
+                               let a16 =
                                  ((Int64Word.append (Pervasives.succ
                                     (Pervasives.succ (Pervasives.succ
                                     (Pervasives.succ (Pervasives.succ
@@ -4383,77 +5501,139 @@ let iPv4_decoder_impl sz v =
                                     (Pervasives.succ (Pervasives.succ
                                     (Pervasives.succ (Pervasives.succ
                                     0))))))))
-                                    (let x,_ = let x,_ = a8 in x in x)
-                                    (let x,_ = let x,_ = a7 in x in x)),
-                                 (let _,y = let x,_ = a8 in x in y)),
-                                 (let _,y = a8 in y)
+                                    (let x,_ = let x,_ = a15 in x in x)
+                                    (let x,_ = let x,_ = a13 in x in x)),
+                                 (let _,y = let x,_ = a15 in x in y)),
+                                 (let _,y = a15 in y)
                                in
-                               let w0 = let x,_ = let x,_ = a9 in x in x in
-                               (match getCurrentByte test_cache
-                                        test_cache_add_nat sz v
-                                        (let _,y = let x,_ = a9 in x in y)
-                                        (let _,y = a9 in y) with
-                                | Some a10 ->
+                               let w0 = let x,_ = let x,_ = a16 in x in x in
+                               let idx6 = let _,y = let x,_ = a16 in x in y in
+                               (match CstructBytestring.nth_opt sz v idx6 with
+                                | Some a17 ->
+                                  let a18 = (a17,(Pervasives.succ
+                                    idx6)),(test_cache_add_nat.addD
+                                             (let _,y = a16 in y)
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ 0)))))))))
+                                  in
                                   (match aligned_decode_enum (Pervasives.succ
                                            (Pervasives.succ 0)) test_cache
                                            test_cache_add_nat
                                            protocolTypeCodes sz v
-                                           (let _,y = let x,_ = a10 in x in y)
-                                           (let _,y = a10 in y) with
-                                   | Some a11 ->
+                                           (let _,y = let x,_ = a18 in x in y)
+                                           (let _,y = a18 in y) with
+                                   | Some a19 ->
                                      (match skipCurrentByte test_cache
                                               test_cache_add_nat sz v
-                                              (let _,y = let x,_ = a11 in x in
-                                               y) (let _,y = a11 in y) with
-                                      | Some a12 ->
+                                              (let _,y = let x,_ = a19 in x in
+                                               y) (let _,y = a19 in y) with
+                                      | Some a20 ->
                                         (match skipCurrentByte test_cache
                                                  test_cache_add_nat sz v
-                                                 (let _,y = let x,_ = a12 in x
+                                                 (let _,y = let x,_ = a20 in x
                                                   in
-                                                  y) (let _,y = a12 in y) with
-                                         | Some a13 ->
-                                           (match getCurrentByte test_cache
-                                                    test_cache_add_nat sz v
-                                                    (let _,y =
-                                                       let x,_ = a13 in x
-                                                     in
-                                                     y) (let _,y = a13 in y) with
-                                            | Some a14 ->
-                                              (match getCurrentByte
-                                                       test_cache
-                                                       test_cache_add_nat sz
-                                                       v
-                                                       (let _,y =
-                                                          let x,_ = a14 in x
-                                                        in
-                                                        y)
-                                                       (let _,y = a14 in y) with
-                                               | Some a15 ->
-                                                 (match getCurrentByte
-                                                          test_cache
-                                                          test_cache_add_nat
-                                                          sz v
-                                                          (let _,y =
-                                                             let x,_ = a15 in
-                                                             x
-                                                           in
-                                                           y)
-                                                          (let _,y = a15 in y) with
-                                                  | Some a16 ->
-                                                    (match getCurrentByte
-                                                             test_cache
-                                                             test_cache_add_nat
-                                                             sz v
-                                                             (let _,y =
-                                                                let x,_ = a16
+                                                  y) (let _,y = a20 in y) with
+                                         | Some a21 ->
+                                           let idx7 =
+                                             let _,y = let x,_ = a21 in x in y
+                                           in
+                                           (match CstructBytestring.nth_opt
+                                                    sz v idx7 with
+                                            | Some a22 ->
+                                              let a23 = (a22,(Pervasives.succ
+                                                idx7)),(test_cache_add_nat.addD
+                                                         (let _,y = a21 in y)
+                                                         (Pervasives.succ
+                                                         (Pervasives.succ
+                                                         (Pervasives.succ
+                                                         (Pervasives.succ
+                                                         (Pervasives.succ
+                                                         (Pervasives.succ
+                                                         (Pervasives.succ
+                                                         (Pervasives.succ
+                                                         0)))))))))
+                                              in
+                                              let idx8 =
+                                                let _,y = let x,_ = a23 in x
+                                                in
+                                                y
+                                              in
+                                              (match CstructBytestring.nth_opt
+                                                       sz v idx8 with
+                                               | Some a24 ->
+                                                 let a25 =
+                                                   (a24,(Pervasives.succ
+                                                   idx8)),(test_cache_add_nat.addD
+                                                            (let _,y = a23 in
+                                                             y)
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            0)))))))))
+                                                 in
+                                                 let idx9 =
+                                                   let _,y =
+                                                     let x,_ = a25 in x
+                                                   in
+                                                   y
+                                                 in
+                                                 (match CstructBytestring.nth_opt
+                                                          sz v idx9 with
+                                                  | Some a26 ->
+                                                    let a27 =
+                                                      (a26,(Pervasives.succ
+                                                      idx9)),(test_cache_add_nat.addD
+                                                               (let _,y = a25
                                                                 in
-                                                                x
-                                                              in
-                                                              y)
-                                                             (let _,y = a16 in
-                                                              y) with
-                                                     | Some a17 ->
-                                                       let a18 =
+                                                                y)
+                                                               (Pervasives.succ
+                                                               (Pervasives.succ
+                                                               (Pervasives.succ
+                                                               (Pervasives.succ
+                                                               (Pervasives.succ
+                                                               (Pervasives.succ
+                                                               (Pervasives.succ
+                                                               (Pervasives.succ
+                                                               0)))))))))
+                                                    in
+                                                    let idx10 =
+                                                      let _,y =
+                                                        let x,_ = a27 in x
+                                                      in
+                                                      y
+                                                    in
+                                                    (match CstructBytestring.nth_opt
+                                                             sz v idx10 with
+                                                     | Some a28 ->
+                                                       let a29 =
+                                                         (a28,(Pervasives.succ
+                                                         idx10)),(test_cache_add_nat.addD
+                                                                   (let _,y =
+                                                                    a27
+                                                                    in
+                                                                    y)
+                                                                   (Pervasives.succ
+                                                                   (Pervasives.succ
+                                                                   (Pervasives.succ
+                                                                   (Pervasives.succ
+                                                                   (Pervasives.succ
+                                                                   (Pervasives.succ
+                                                                   (Pervasives.succ
+                                                                   (Pervasives.succ
+                                                                   0)))))))))
+                                                       in
+                                                       let a30 =
                                                          ((Int64Word.append
                                                             (Pervasives.succ
                                                             (Pervasives.succ
@@ -4494,7 +5674,7 @@ let iPv4_decoder_impl sz v =
                                                                 (Pervasives.succ
                                                                 0))))))))))
                                                             (let x,_ =
-                                                               let x,_ = a17
+                                                               let x,_ = a29
                                                                in
                                                                x
                                                              in
@@ -4529,7 +5709,7 @@ let iPv4_decoder_impl sz v =
                                                                 (Pervasives.succ
                                                                 0)))))))))
                                                               (let x,_ =
-                                                                 let x,_ = a16
+                                                                 let x,_ = a27
                                                                  in
                                                                  x
                                                                in
@@ -4555,92 +5735,143 @@ let iPv4_decoder_impl sz v =
                                                                 0))))))))
                                                                 (let x,_ =
                                                                    let x,_ =
-                                                                    a15
+                                                                    a25
                                                                    in
                                                                    x
                                                                  in
                                                                  x)
                                                                 (let x,_ =
                                                                    let x,_ =
-                                                                    a14
+                                                                    a23
                                                                    in
                                                                    x
                                                                  in
                                                                  x)))),
                                                          (let _,y =
-                                                            let x,_ = a17 in x
+                                                            let x,_ = a29 in x
                                                           in
-                                                          y)),(let _,y = a17
+                                                          y)),(let _,y = a29
                                                                in
                                                                y)
                                                        in
-                                                       (match getCurrentByte
-                                                                test_cache
-                                                                test_cache_add_nat
-                                                                sz v
-                                                                (let _,y =
-                                                                   let x,_ =
-                                                                    a18
-                                                                   in
-                                                                   x
-                                                                 in
-                                                                 y)
-                                                                (let _,y = a18
-                                                                 in
-                                                                 y) with
-                                                        | Some a19 ->
-                                                          (match getCurrentByte
-                                                                   test_cache
-                                                                   test_cache_add_nat
-                                                                   sz v
-                                                                   (let _,y =
-                                                                    let x,_ =
-                                                                    a19
-                                                                    in
-                                                                    x
-                                                                    in
-                                                                    y)
-                                                                   (let _,y =
-                                                                    a19
-                                                                    in
-                                                                    y) with
-                                                           | Some a20 ->
-                                                             (match getCurrentByte
-                                                                    test_cache
-                                                                    test_cache_add_nat
-                                                                    sz v
+                                                       let idx11 =
+                                                         let _,y =
+                                                           let x,_ = a30 in x
+                                                         in
+                                                         y
+                                                       in
+                                                       (match CstructBytestring.nth_opt
+                                                                sz v idx11 with
+                                                        | Some a31 ->
+                                                          let a32 =
+                                                            (a31,(Pervasives.succ
+                                                            idx11)),(test_cache_add_nat.addD
                                                                     (
                                                                     let _,y =
-                                                                    let x,_ =
-                                                                    a20
-                                                                    in
-                                                                    x
+                                                                    a30
                                                                     in
                                                                     y)
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                          in
+                                                          let idx12 =
+                                                            let _,y =
+                                                              let x,_ = a32 in
+                                                              x
+                                                            in
+                                                            y
+                                                          in
+                                                          (match CstructBytestring.nth_opt
+                                                                   sz v idx12 with
+                                                           | Some a33 ->
+                                                             let a34 =
+                                                               (a33,(Pervasives.succ
+                                                               idx12)),
+                                                               (test_cache_add_nat.addD
+                                                                 (let _,y =
+                                                                    a32
+                                                                  in
+                                                                  y)
+                                                                 (Pervasives.succ
+                                                                 (Pervasives.succ
+                                                                 (Pervasives.succ
+                                                                 (Pervasives.succ
+                                                                 (Pervasives.succ
+                                                                 (Pervasives.succ
+                                                                 (Pervasives.succ
+                                                                 (Pervasives.succ
+                                                                 0)))))))))
+                                                             in
+                                                             let idx13 =
+                                                               let _,y =
+                                                                 let x,_ = a34
+                                                                 in
+                                                                 x
+                                                               in
+                                                               y
+                                                             in
+                                                             (match CstructBytestring.nth_opt
+                                                                    sz v idx13 with
+                                                              | Some a35 ->
+                                                                let a36 =
+                                                                  (a35,(Pervasives.succ
+                                                                  idx13)),
+                                                                  (test_cache_add_nat.addD
                                                                     (
                                                                     let _,y =
-                                                                    a20
+                                                                    a34
                                                                     in
-                                                                    y) with
-                                                              | Some a21 ->
+                                                                    y)
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                in
+                                                                let idx14 =
+                                                                  let _,y =
+                                                                    let x,_ =
+                                                                    a36
+                                                                    in
+                                                                    x
+                                                                  in
+                                                                  y
+                                                                in
                                                                 (match 
-                                                                 getCurrentByte
-                                                                   test_cache
-                                                                   test_cache_add_nat
-                                                                   sz v
-                                                                   (let _,y =
-                                                                    let x,_ =
-                                                                    a21
-                                                                    in
-                                                                    x
+                                                                 CstructBytestring.nth_opt
+                                                                   sz v idx14 with
+                                                                 | Some a37 ->
+                                                                   let a38 =
+                                                                    (a37,(Pervasives.succ
+                                                                    idx14)),
+                                                                    (test_cache_add_nat.addD
+                                                                    (
+                                                                    let _,y =
+                                                                    a36
                                                                     in
                                                                     y)
-                                                                   (let _,y =
-                                                                    a21
-                                                                    in
-                                                                    y) with
-                                                                 | Some a22 ->
-                                                                   let a23 =
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                   in
+                                                                   let a39 =
                                                                     ((Int64Word.append
                                                                     (Pervasives.succ
                                                                     (Pervasives.succ
@@ -4683,7 +5914,7 @@ let iPv4_decoder_impl sz v =
                                                                     (
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a22
+                                                                    a38
                                                                     in
                                                                     x
                                                                     in
@@ -4720,7 +5951,7 @@ let iPv4_decoder_impl sz v =
                                                                     (
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a21
+                                                                    a36
                                                                     in
                                                                     x
                                                                     in
@@ -4747,7 +5978,7 @@ let iPv4_decoder_impl sz v =
                                                                     (
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a20
+                                                                    a34
                                                                     in
                                                                     x
                                                                     in
@@ -4755,7 +5986,7 @@ let iPv4_decoder_impl sz v =
                                                                     (
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a19
+                                                                    a32
                                                                     in
                                                                     x
                                                                     in
@@ -4763,14 +5994,14 @@ let iPv4_decoder_impl sz v =
                                                                     (
                                                                     let _,y =
                                                                     let x,_ =
-                                                                    a22
+                                                                    a38
                                                                     in
                                                                     x
                                                                     in
                                                                     y)),
                                                                     (
                                                                     let _,y =
-                                                                    a22
+                                                                    a38
                                                                     in
                                                                     y)
                                                                    in
@@ -4778,16 +6009,375 @@ let iPv4_decoder_impl sz v =
                                                                     listAlignedDecodeM
                                                                     test_cache
                                                                     sz
-                                                                    (fun numBytes ->
-                                                                    getCurrentBytes
-                                                                    test_cache
-                                                                    test_cache_add_nat
+                                                                    (fun numBytes v0 idx15 c0 ->
+                                                                    match 
+                                                                    CstructBytestring.nth_opt
                                                                     numBytes
+                                                                    v0 idx15 with
+                                                                    | Some a40 ->
+                                                                    let a41 =
+                                                                    (a40,(Pervasives.succ
+                                                                    idx15)),
+                                                                    (test_cache_add_nat.addD
+                                                                    c0
                                                                     (Pervasives.succ
                                                                     (Pervasives.succ
                                                                     (Pervasives.succ
                                                                     (Pervasives.succ
-                                                                    0)))))
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    in
+                                                                    let idx16 =
+                                                                    let _,y =
+                                                                    let x,_ =
+                                                                    a41
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    y
+                                                                    in
+                                                                    (
+                                                                    match 
+                                                                    match 
+                                                                    CstructBytestring.nth_opt
+                                                                    numBytes
+                                                                    v0 idx16 with
+                                                                    | Some a42 ->
+                                                                    let a43 =
+                                                                    (a42,(Pervasives.succ
+                                                                    idx16)),
+                                                                    (test_cache_add_nat.addD
+                                                                    (
+                                                                    let _,y =
+                                                                    a41
+                                                                    in
+                                                                    y)
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    in
+                                                                    let idx17 =
+                                                                    let _,y =
+                                                                    let x,_ =
+                                                                    a43
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    y
+                                                                    in
+                                                                    (
+                                                                    match 
+                                                                    match 
+                                                                    CstructBytestring.nth_opt
+                                                                    numBytes
+                                                                    v0 idx17 with
+                                                                    | Some a44 ->
+                                                                    let a45 =
+                                                                    (a44,(Pervasives.succ
+                                                                    idx17)),
+                                                                    (test_cache_add_nat.addD
+                                                                    (
+                                                                    let _,y =
+                                                                    a43
+                                                                    in
+                                                                    y)
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    in
+                                                                    let idx18 =
+                                                                    let _,y =
+                                                                    let x,_ =
+                                                                    a45
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    y
+                                                                    in
+                                                                    (
+                                                                    match 
+                                                                    match 
+                                                                    CstructBytestring.nth_opt
+                                                                    numBytes
+                                                                    v0 idx18 with
+                                                                    | Some a46 ->
+                                                                    let a47 =
+                                                                    (a46,(Pervasives.succ
+                                                                    idx18)),
+                                                                    (test_cache_add_nat.addD
+                                                                    (
+                                                                    let _,y =
+                                                                    a45
+                                                                    in
+                                                                    y)
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    in
+                                                                    let a48 =
+                                                                    ((Int64Word.w0),
+                                                                    (
+                                                                    let _,y =
+                                                                    let x,_ =
+                                                                    a47
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    y)),
+                                                                    (
+                                                                    let _,y =
+                                                                    a47
+                                                                    in
+                                                                    y)
+                                                                    in
+                                                                    Some
+                                                                    ((
+                                                                    (Int64Word.append
+                                                                    (mul 0
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0))))))))
+                                                                    (
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a48
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x)
+                                                                    (
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a47
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x)),
+                                                                    (
+                                                                    let _,y =
+                                                                    let x,_ =
+                                                                    a48
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    y)),
+                                                                    (
+                                                                    let _,y =
+                                                                    a48
+                                                                    in
+                                                                    y))
+                                                                    | None ->
+                                                                    None with
+                                                                    | Some a46 ->
+                                                                    Some
+                                                                    (((Int64Word.append
+                                                                    (mul
+                                                                    (Pervasives.succ
+                                                                    0)
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0))))))))
+                                                                    (
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a46
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x)
+                                                                    (
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a45
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x)),
+                                                                    (
+                                                                    let _,y =
+                                                                    let x,_ =
+                                                                    a46
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    y)),
+                                                                    (
+                                                                    let _,y =
+                                                                    a46
+                                                                    in
+                                                                    y))
+                                                                    | None ->
+                                                                    None)
+                                                                    | None ->
+                                                                    None with
+                                                                    | Some a44 ->
+                                                                    Some
+                                                                    (((Int64Word.append
+                                                                    (mul
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0))
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0))))))))
+                                                                    (
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a44
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x)
+                                                                    (
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a43
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x)),
+                                                                    (
+                                                                    let _,y =
+                                                                    let x,_ =
+                                                                    a44
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    y)),
+                                                                    (
+                                                                    let _,y =
+                                                                    a44
+                                                                    in
+                                                                    y))
+                                                                    | None ->
+                                                                    None)
+                                                                    | None ->
+                                                                    None with
+                                                                    | Some a42 ->
+                                                                    Some
+                                                                    (((Int64Word.append
+                                                                    (mul
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0))))))))
+                                                                    (
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a42
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x)
+                                                                    (
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a41
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x)),
+                                                                    (
+                                                                    let _,y =
+                                                                    let x,_ =
+                                                                    a42
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    y)),
+                                                                    (
+                                                                    let _,y =
+                                                                    a42
+                                                                    in
+                                                                    y))
+                                                                    | None ->
+                                                                    None)
+                                                                    | None ->
+                                                                    None)
                                                                     (sub
                                                                     (Int64Word.wordToNat
                                                                     (Pervasives.succ
@@ -4816,30 +6406,30 @@ let iPv4_decoder_impl sz v =
                                                                     (
                                                                     let _,y =
                                                                     let x,_ =
-                                                                    a23
+                                                                    a39
                                                                     in
                                                                     x
                                                                     in
                                                                     y)
                                                                     (
                                                                     let _,y =
-                                                                    a23
+                                                                    a39
                                                                     in
                                                                     y) with
-                                                                    | Some a24 ->
+                                                                    | Some a40 ->
                                                                     let l =
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a24
+                                                                    a40
                                                                     in
                                                                     x
                                                                     in
                                                                     x
                                                                     in
-                                                                    let idx0 =
+                                                                    let idx15 =
                                                                     let _,y =
                                                                     let x,_ =
-                                                                    a24
+                                                                    a40
                                                                     in
                                                                     x
                                                                     in
@@ -4847,7 +6437,7 @@ let iPv4_decoder_impl sz v =
                                                                     in
                                                                     let c0 =
                                                                     let _,y =
-                                                                    a24
+                                                                    a40
                                                                     in
                                                                     y
                                                                     in
@@ -5153,7 +6743,7 @@ let iPv4_decoder_impl sz v =
                                                                     (
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a6
+                                                                    a11
                                                                     in
                                                                     x
                                                                     in
@@ -5488,7 +7078,7 @@ let iPv4_decoder_impl sz v =
                                                                     (
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a10
+                                                                    a18
                                                                     in
                                                                     x
                                                                     in
@@ -5497,7 +7087,7 @@ let iPv4_decoder_impl sz v =
                                                                     (
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a11
+                                                                    a19
                                                                     in
                                                                     x
                                                                     in
@@ -5506,7 +7096,7 @@ let iPv4_decoder_impl sz v =
                                                                     (
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a18
+                                                                    a30
                                                                     in
                                                                     x
                                                                     in
@@ -5515,13 +7105,13 @@ let iPv4_decoder_impl sz v =
                                                                     (
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a23
+                                                                    a39
                                                                     in
                                                                     x
                                                                     in
                                                                     x);
                                                                     options =
-                                                                    l },idx0),c0))
+                                                                    l },idx15),c0))
                                                                     else 
                                                                     Obj.magic
                                                                     None
@@ -5555,726 +7145,15 @@ let iPv4_decoder_impl sz v =
         | None -> Obj.magic None)
   else Obj.magic None
 
-(** val bin_pkt : Int64Word.t ArrayVector.storage_t **)
-
-let bin_pkt =
-  ArrayVector.cons ((Int64Word.ws (true, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))))), (Int64Word.ws (true, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0)))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws (true,
-    (Pervasives.succ 0), (Int64Word.ws (false, 0,
-    (Int64Word.w0))))))))))))))))), (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))))))))))))))))))))), (ArrayVector.cons
-    ((Int64Word.ws (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws (false,
-    (Pervasives.succ 0), (Int64Word.ws (false, 0,
-    (Int64Word.w0))))))))))))))))), (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))))))))))))))))))))), (ArrayVector.cons ((Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))),
-    (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))), (Int64Word.ws
-    (true, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))), (Int64Word.ws (true, (Pervasives.succ
-    (Pervasives.succ 0)), (Int64Word.ws (true, (Pervasives.succ 0),
-    (Int64Word.ws (false, 0, (Int64Word.w0))))))))))))))))), (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))))))))))))))))))), (ArrayVector.cons ((Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))),
-    (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ 0)), (Int64Word.ws (false, (Pervasives.succ 0),
-    (Int64Word.ws (false, 0, (Int64Word.w0))))))))))))))))), (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))))))))))))))))),
-    (ArrayVector.cons ((Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0)))))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))),
-    (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ 0)),
-    (Int64Word.ws (false, (Pervasives.succ 0), (Int64Word.ws (false, 0,
-    (Int64Word.w0))))))))))))))))), (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))))))))))))))))), (ArrayVector.cons ((Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws (false,
-    (Pervasives.succ 0), (Int64Word.ws (false, 0,
-    (Int64Word.w0))))))))))))))))), (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))))))))))))))))), (ArrayVector.cons ((Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))),
-    (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ 0)), (Int64Word.ws (false, (Pervasives.succ 0),
-    (Int64Word.ws (false, 0, (Int64Word.w0))))))))))))))))), (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))))))))))))))), (ArrayVector.cons ((Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))),
-    (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ 0)), (Int64Word.ws (false, (Pervasives.succ 0),
-    (Int64Word.ws (false, 0, (Int64Word.w0))))))))))))))))), (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))))))))))))),
-    (ArrayVector.cons ((Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))))), (Int64Word.ws (true,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0)))))), (Int64Word.ws (true,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))),
-    (Int64Word.ws (true, (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws
-    (false, (Pervasives.succ 0), (Int64Word.ws (false, 0,
-    (Int64Word.w0))))))))))))))))), (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))))))))))))), (ArrayVector.cons ((Int64Word.ws
-    (true, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws (false,
-    (Pervasives.succ 0), (Int64Word.ws (false, 0,
-    (Int64Word.w0))))))))))))))))), (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))))))))))))), (ArrayVector.cons ((Int64Word.ws (true, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))))), (Int64Word.ws (true,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0)))))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))), (Int64Word.ws
-    (true, (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))),
-    (Int64Word.ws (true, (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws
-    (true, (Pervasives.succ 0), (Int64Word.ws (true, 0,
-    (Int64Word.w0))))))))))))))))), (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))))))))),
-    (ArrayVector.cons ((Int64Word.ws (true, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))))), (Int64Word.ws (true, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))))), (Int64Word.ws (true, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))), (Int64Word.ws (true, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0)))), (Int64Word.ws (true,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws (false,
-    (Pervasives.succ 0), (Int64Word.ws (true, 0,
-    (Int64Word.w0))))))))))))))))), (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0)))))))))))), (ArrayVector.cons
-    ((Int64Word.ws (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws (true,
-    (Pervasives.succ 0), (Int64Word.ws (true, 0,
-    (Int64Word.w0))))))))))))))))), (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))))))))), (ArrayVector.cons ((Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))),
-    (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))), (Int64Word.ws (true,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))), (Int64Word.ws (true, (Pervasives.succ
-    (Pervasives.succ 0)), (Int64Word.ws (false, (Pervasives.succ 0),
-    (Int64Word.ws (true, 0, (Int64Word.w0))))))))))))))))), (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))))))))), (ArrayVector.cons ((Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))),
-    (Int64Word.ws (true, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))), (Int64Word.ws
-    (true, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))), (Int64Word.ws (true,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))), (Int64Word.ws (true, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ 0)), (Int64Word.ws (true, (Pervasives.succ 0),
-    (Int64Word.ws (true, 0, (Int64Word.w0))))))))))))))))), (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))))))), (ArrayVector.cons ((Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))))), (Int64Word.ws (true,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0)))))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))), (Int64Word.ws (true, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))),
-    (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ 0)),
-    (Int64Word.ws (false, (Pervasives.succ 0), (Int64Word.ws (false, 0,
-    (Int64Word.w0))))))))))))))))), (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0)))))))), (ArrayVector.cons
-    ((Int64Word.ws (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws (true,
-    (Pervasives.succ 0), (Int64Word.ws (true, 0,
-    (Int64Word.w0))))))))))))))))), (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))))), (ArrayVector.cons ((Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))),
-    (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))), (Int64Word.ws (true,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))), (Int64Word.ws (true, (Pervasives.succ
-    (Pervasives.succ 0)), (Int64Word.ws (false, (Pervasives.succ 0),
-    (Int64Word.ws (true, 0, (Int64Word.w0))))))))))))))))), (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))))), (ArrayVector.cons ((Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))),
-    (Int64Word.ws (true, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))), (Int64Word.ws
-    (true, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))), (Int64Word.ws (true,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))), (Int64Word.ws (true, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ 0)), (Int64Word.ws (true, (Pervasives.succ 0),
-    (Int64Word.ws (true, 0, (Int64Word.w0))))))))))))))))), (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))), (ArrayVector.cons ((Int64Word.ws (true, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0)))))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))),
-    (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ 0)),
-    (Int64Word.ws (false, (Pervasives.succ 0), (Int64Word.ws (false, 0,
-    (Int64Word.w0))))))))))))))))), (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0)))), (ArrayVector.cons ((Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws (false,
-    (Pervasives.succ 0), (Int64Word.ws (false, 0,
-    (Int64Word.w0))))))))))))))))), (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))), (ArrayVector.cons ((Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))),
-    (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ 0)), (Int64Word.ws (false, (Pervasives.succ 0),
-    (Int64Word.ws (false, 0, (Int64Word.w0))))))))))))))))), (Pervasives.succ
-    (Pervasives.succ 0)), (ArrayVector.cons ((Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))),
-    (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ 0)), (Int64Word.ws (false, (Pervasives.succ 0),
-    (Int64Word.ws (false, 0, (Int64Word.w0))))))))))))))))), (Pervasives.succ
-    0), (ArrayVector.cons ((Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0)))))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))),
-    (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ 0)),
-    (Int64Word.ws (false, (Pervasives.succ 0), (Int64Word.ws (false, 0,
-    (Int64Word.w0))))))))))))))))), 0,
-    ArrayVector.empty ())))))))))))))))))))))))))))))))))))))))))))))))
-
-(** val pkt : iPv4_Packet **)
-
-let pkt =
-  { totalLength = (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))))))))))))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))))))))))))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))))))))))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0)))))))))))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))))))),
-    (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))))))),
-    (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))))))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))))))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))))), (Int64Word.ws (true, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0)))), (Int64Word.ws (true,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))), (Int64Word.ws
-    (true, (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws (true,
-    (Pervasives.succ 0), (Int64Word.ws (false, 0,
-    (Int64Word.w0))))))))))))))))))))))))))))))))); iD =
-    (Int64Word.wones (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ 0))))))))))))))))); dF = false; mF = false;
-    fragmentOffset =
-    (Int64Word.wzero (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ (Pervasives.succ 0)))))))))))))); tTL = (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))))), (Int64Word.ws (true, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))))), (Int64Word.ws (true, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))), (Int64Word.ws (true,
-    (Pervasives.succ (Pervasives.succ 0)), (Int64Word.ws (false,
-    (Pervasives.succ 0), (Int64Word.ws (false, 0,
-    (Int64Word.w0))))))))))))))))); protocol = (ArrayVector.zero
-    (Pervasives.succ (Pervasives.succ 0))); sourceAddress = (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))))))))))))))))))))))))))))), (Int64Word.ws (true, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))))))))))))))))))))))))))))), (Int64Word.ws (true,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))))))))))))))))))))))))))), (Int64Word.ws (true,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))))))))))))))))))))))))))), (Int64Word.ws (true, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))))))))))))))))))))))))),
-    (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))))))))))))))))))))))))), (Int64Word.ws (true, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))))))))))))))))))))))), (Int64Word.ws (true, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))))))))))))))))))))))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))))))))))))))))))))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))))))))))))))))))))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))))))))))))))))))), (Int64Word.ws (true, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))))))))))))))))),
-    (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))))))))))))))))), (Int64Word.ws (true, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))))))))))))))))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))))))))))))))), (Int64Word.ws (true,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))))))))))))))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))))))))))))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0)))))))))))))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))))))))))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))))))))),
-    (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))))))))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))))))))), (Int64Word.ws (true, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))))),
-    (Int64Word.ws (true, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))))))), (Int64Word.ws (true, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))))), (Int64Word.ws (true,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0)))))), (Int64Word.ws (true,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))), (Int64Word.ws (true, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))), (Int64Word.ws
-    (true, (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))),
-    (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ 0)),
-    (Int64Word.ws (false, (Pervasives.succ 0), (Int64Word.ws (true, 0,
-    (Int64Word.w0)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))));
-    destAddress = (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))))))))))))))))))))))))))))), (Int64Word.ws (true,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0)))))))))))))))))))))))))))))),
-    (Int64Word.ws (true, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))))))))))))))))))))))))))),
-    (Int64Word.ws (true, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))))))))))))))))))))))))))), (Int64Word.ws (true,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))))))))))))))))))))))))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))))))))))))))))))))))))), (Int64Word.ws (true,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))))))))))))))))))))))), (Int64Word.ws (true,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))))))))))))))))))))))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))))))))))))))))))))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))))))))))))))))))))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))))))))))))))))))), (Int64Word.ws (true, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))))))))))))))))),
-    (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))))))))))))))))), (Int64Word.ws (true, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))))))))))))))))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))))))))))))))), (Int64Word.ws (true,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))))))))))))))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))))))))))))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0)))))))))))))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))))))))))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))))))))),
-    (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0))))))))))), (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    0)))))))))), (Int64Word.ws (true, (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))))),
-    (Int64Word.ws (true, (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))))))), (Int64Word.ws (false, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))))))), (Int64Word.ws (true,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0)))))), (Int64Word.ws (false,
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))))), (Int64Word.ws (true, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))), (Int64Word.ws
-    (false, (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))),
-    (Int64Word.ws (false, (Pervasives.succ (Pervasives.succ 0)),
-    (Int64Word.ws (false, (Pervasives.succ 0), (Int64Word.ws (false, 0,
-    (Int64Word.w0)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))));
-    options = [] }
-
 type tCP_Packet = { sourcePort : Int64Word.t; destPort : Int64Word.t;
                     seqNumber : Int64Word.t; ackNumber : Int64Word.t;
                     nS : bool; cWR : bool; eCE : bool; aCK : bool;
                     pSH : bool; rST : bool; sYN : bool; fIN : bool;
                     windowSize : Int64Word.t;
                     urgentPointer : Int64Word.t option;
-                    options0 : Int64Word.t list; payload : Int64Word.t list }
+                    options0 : Int64Word.t list;
+                    payload : (OCamlNativeInt.t, CstructBytestring.storage_t)
+                              sigT }
 
 (** val sourcePort : tCP_Packet -> Int64Word.t **)
 
@@ -6336,207 +7215,993 @@ let urgentPointer x = x.urgentPointer
 
 let options0 x = x.options0
 
-(** val payload : tCP_Packet -> Int64Word.t list **)
+(** val payload :
+    tCP_Packet -> (OCamlNativeInt.t, CstructBytestring.storage_t) sigT **)
 
 let payload x = x.payload
 
 (** val tCP_encoder_impl :
-    Int64Word.t ArrayVector.storage_t -> Int64Word.t ArrayVector.storage_t ->
-    Int64Word.t -> tCP_Packet -> OCamlNativeInt.t -> char
-    ArrayVector.storage_t -> ((char
-    ArrayVector.storage_t*OCamlNativeInt.t)*cacheFormat) option **)
+    CstructBytestring.storage_t -> CstructBytestring.storage_t -> Int64Word.t
+    -> tCP_Packet -> OCamlNativeInt.t -> CstructBytestring.storage_t ->
+    ((CstructBytestring.storage_t*OCamlNativeInt.t)*cacheFormat) option **)
 
 let tCP_encoder_impl srcAddr destAddr tcpLength r sz v =
-  match match setCurrentBytes test_cache test_cache_add_nat sz
-                (Pervasives.succ (Pervasives.succ 0)) v 0 r.sourcePort
-                (Obj.magic ()) with
-        | Some a ->
-          (match setCurrentBytes test_cache test_cache_add_nat sz
-                   (Pervasives.succ (Pervasives.succ 0))
-                   (let x,_ = let x,_ = a in x in x)
-                   (let _,y = let x,_ = a in x in y) r.destPort
-                   (let _,y = a in y) with
-           | Some a0 ->
-             (match setCurrentBytes test_cache test_cache_add_nat sz
-                      (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                      (Pervasives.succ 0))))
-                      (let x,_ = let x,_ = a0 in x in x)
-                      (let _,y = let x,_ = a0 in x in y) r.seqNumber
-                      (let _,y = a0 in y) with
-              | Some a1 ->
-                (match setCurrentBytes test_cache test_cache_add_nat sz
-                         (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                         (Pervasives.succ 0))))
-                         (let x,_ = let x,_ = a1 in x in x)
-                         (let _,y = let x,_ = a1 in x in y) r.ackNumber
-                         (let _,y = a1 in y) with
-                 | Some a2 ->
-                   (match setCurrentByte test_cache test_cache_add_nat sz
-                            (let x,_ = let x,_ = a2 in x in x)
-                            (let _,y = let x,_ = a2 in x in y)
-                            (Int64Word.combine (Pervasives.succ 0)
-                              (Int64Word.ws (r.nS, 0, (Int64Word.w0)))
-                              (add (Pervasives.succ (Pervasives.succ
+  match let idx = 0 in
+        (match let w = r.sourcePort in
+               if Nat.ltb idx sz
+               then let a =
+                      ((CstructBytestring.set_nth sz v idx
+                         (Int64Word.split1' (Pervasives.succ (Pervasives.succ
+                           (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                           (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                           0))))))))
+                           (mul (Pervasives.succ 0) (Pervasives.succ
+                             (Pervasives.succ (Pervasives.succ
+                             (Pervasives.succ (Pervasives.succ
+                             (Pervasives.succ (Pervasives.succ
+                             (Pervasives.succ 0))))))))) w)),(Pervasives.succ
+                      idx)),(test_cache_add_nat.addE (Obj.magic ())
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ 0)))))))))
+                    in
+                    let idx0 = let _,y = let x,_ = a in x in y in
+                    let ce = let _,y = a in y in
+                    if Nat.ltb idx0 sz
+                    then Some
+                           (((CstructBytestring.set_nth sz
+                               (let x,_ = let x,_ = a in x in x) idx0
+                               (Int64Word.split2' (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ 0))))))))
+                                 (mul (Pervasives.succ 0) (Pervasives.succ
+                                   (Pervasives.succ (Pervasives.succ
+                                   (Pervasives.succ (Pervasives.succ
+                                   (Pervasives.succ (Pervasives.succ
+                                   (Pervasives.succ 0))))))))) w)),(Pervasives.succ
+                           idx0)),(test_cache_add_nat.addE ce
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    0))))))))))
+                    else None
+               else None with
+         | Some a ->
+           let idx0 = let _,y = let x,_ = a in x in y in
+           (match let w = r.destPort in
+                  if Nat.ltb idx0 sz
+                  then let a0 =
+                         ((CstructBytestring.set_nth sz
+                            (let x,_ = let x,_ = a in x in x) idx0
+                            (Int64Word.split1' (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ 0))))))))
+                              (mul (Pervasives.succ 0) (Pervasives.succ
+                                (Pervasives.succ (Pervasives.succ
+                                (Pervasives.succ (Pervasives.succ
+                                (Pervasives.succ (Pervasives.succ
+                                (Pervasives.succ 0))))))))) w)),(Pervasives.succ
+                         idx0)),(test_cache_add_nat.addE (let _,y = a in y)
+                                  (Pervasives.succ (Pervasives.succ
+                                  (Pervasives.succ (Pervasives.succ
+                                  (Pervasives.succ (Pervasives.succ
+                                  (Pervasives.succ (Pervasives.succ 0)))))))))
+                       in
+                       let idx1 = let _,y = let x,_ = a0 in x in y in
+                       let ce = let _,y = a0 in y in
+                       if Nat.ltb idx1 sz
+                       then Some
+                              (((CstructBytestring.set_nth sz
+                                  (let x,_ = let x,_ = a0 in x in x) idx1
+                                  (Int64Word.split2' (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ 0))))))))
+                                    (mul (Pervasives.succ 0) (Pervasives.succ
+                                      (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ 0))))))))) w)),(Pervasives.succ
+                              idx1)),(test_cache_add_nat.addE ce
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       0))))))))))
+                       else None
+                  else None with
+            | Some a0 ->
+              let idx1 = let _,y = let x,_ = a0 in x in y in
+              (match let w = r.seqNumber in
+                     if Nat.ltb idx1 sz
+                     then let a1 =
+                            ((CstructBytestring.set_nth sz
+                               (let x,_ = let x,_ = a0 in x in x) idx1
+                               (Int64Word.split1' (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ 0))))))))
+                                 (mul (Pervasives.succ (Pervasives.succ
+                                   (Pervasives.succ 0))) (Pervasives.succ
+                                   (Pervasives.succ (Pervasives.succ
+                                   (Pervasives.succ (Pervasives.succ
+                                   (Pervasives.succ (Pervasives.succ
+                                   (Pervasives.succ 0))))))))) w)),(Pervasives.succ
+                            idx1)),(test_cache_add_nat.addE
+                                     (let _,y = a0 in y) (Pervasives.succ
+                                     (Pervasives.succ (Pervasives.succ
+                                     (Pervasives.succ (Pervasives.succ
+                                     (Pervasives.succ (Pervasives.succ
+                                     (Pervasives.succ 0)))))))))
+                          in
+                          let idx2 = let _,y = let x,_ = a1 in x in y in
+                          let s =
+                            Int64Word.split2' (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ 0))))))))
+                              (mul (Pervasives.succ (Pervasives.succ
                                 (Pervasives.succ 0))) (Pervasives.succ
                                 (Pervasives.succ (Pervasives.succ
-                                (Pervasives.succ 0)))))
-                              (Int64Word.combine (Pervasives.succ
-                                (Pervasives.succ (Pervasives.succ 0)))
-                                (Int64Word.wzero (Pervasives.succ
-                                  (Pervasives.succ (Pervasives.succ 0))))
                                 (Pervasives.succ (Pervasives.succ
-                                (Pervasives.succ (Pervasives.succ 0))))
-                                (Int64Word.natToWord (Pervasives.succ
-                                  (Pervasives.succ (Pervasives.succ
-                                  (Pervasives.succ 0))))
-                                  (add (Pervasives.succ (Pervasives.succ
+                                (Pervasives.succ (Pervasives.succ
+                                (Pervasives.succ 0))))))))) w
+                          in
+                          let c = let _,y = a1 in y in
+                          if Nat.ltb idx2 sz
+                          then let a2 =
+                                 ((CstructBytestring.set_nth sz
+                                    (let x,_ = let x,_ = a1 in x in x) idx2
+                                    (Int64Word.split1' (Pervasives.succ
+                                      (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ 0))))))))
+                                      (mul (Pervasives.succ (Pervasives.succ
+                                        0)) (Pervasives.succ (Pervasives.succ
+                                        (Pervasives.succ (Pervasives.succ
+                                        (Pervasives.succ (Pervasives.succ
+                                        (Pervasives.succ (Pervasives.succ
+                                        0))))))))) s)),(Pervasives.succ
+                                 idx2)),(test_cache_add_nat.addE c
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          0)))))))))
+                               in
+                               let idx3 = let _,y = let x,_ = a2 in x in y in
+                               let s0 =
+                                 Int64Word.split2' (Pervasives.succ
+                                   (Pervasives.succ (Pervasives.succ
+                                   (Pervasives.succ (Pervasives.succ
+                                   (Pervasives.succ (Pervasives.succ
+                                   (Pervasives.succ 0))))))))
+                                   (mul (Pervasives.succ (Pervasives.succ 0))
+                                     (Pervasives.succ (Pervasives.succ
+                                     (Pervasives.succ (Pervasives.succ
+                                     (Pervasives.succ (Pervasives.succ
+                                     (Pervasives.succ (Pervasives.succ
+                                     0))))))))) s
+                               in
+                               let c0 = let _,y = a2 in y in
+                               if Nat.ltb idx3 sz
+                               then let a3 =
+                                      ((CstructBytestring.set_nth sz
+                                         (let x,_ = let x,_ = a2 in x in x)
+                                         idx3
+                                         (Int64Word.split1' (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ 0))))))))
+                                           (mul (Pervasives.succ 0)
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ 0))))))))) s0)),(Pervasives.succ
+                                      idx3)),(test_cache_add_nat.addE c0
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ 0)))))))))
+                                    in
+                                    let idx4 =
+                                      let _,y = let x,_ = a3 in x in y
+                                    in
+                                    let ce = let _,y = a3 in y in
+                                    if Nat.ltb idx4 sz
+                                    then Some
+                                           (((CstructBytestring.set_nth sz
+                                               (let x,_ = let x,_ = a3 in x in
+                                                x) idx4
+                                               (Int64Word.split2'
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ 0))))))))
+                                                 (mul (Pervasives.succ 0)
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ 0)))))))))
+                                                 s0)),(Pervasives.succ
+                                           idx4)),(test_cache_add_nat.addE ce
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    0))))))))))
+                                    else None
+                               else None
+                          else None
+                     else None with
+               | Some a1 ->
+                 let idx2 = let _,y = let x,_ = a1 in x in y in
+                 (match let w = r.ackNumber in
+                        if Nat.ltb idx2 sz
+                        then let a2 =
+                               ((CstructBytestring.set_nth sz
+                                  (let x,_ = let x,_ = a1 in x in x) idx2
+                                  (Int64Word.split1' (Pervasives.succ
                                     (Pervasives.succ (Pervasives.succ
-                                    (Pervasives.succ 0)))))
-                                    (length r.options0)))))
-                            (let _,y = a2 in y) with
-                    | Some a3 ->
-                      (match setCurrentByte test_cache test_cache_add_nat sz
-                               (let x,_ = let x,_ = a3 in x in x)
-                               (let _,y = let x,_ = a3 in x in y)
-                               (Int64Word.combine (Pervasives.succ 0)
-                                 (Int64Word.ws (r.fIN, 0, (Int64Word.w0)))
-                                 (add (Pervasives.succ 0)
-                                   (add (Pervasives.succ 0)
-                                     (add (Pervasives.succ 0)
-                                       (add (Pervasives.succ 0)
-                                         (add (Pervasives.succ 0)
-                                           (add (Pervasives.succ 0)
-                                             (Pervasives.succ 0)))))))
-                                 (Int64Word.combine (Pervasives.succ 0)
-                                   (Int64Word.ws (r.sYN, 0, (Int64Word.w0)))
-                                   (add (Pervasives.succ 0)
-                                     (add (Pervasives.succ 0)
-                                       (add (Pervasives.succ 0)
-                                         (add (Pervasives.succ 0)
-                                           (add (Pervasives.succ 0)
-                                             (Pervasives.succ 0))))))
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ 0))))))))
+                                    (mul (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ 0))) (Pervasives.succ
+                                      (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ 0))))))))) w)),(Pervasives.succ
+                               idx2)),(test_cache_add_nat.addE
+                                        (let _,y = a1 in y) (Pervasives.succ
+                                        (Pervasives.succ (Pervasives.succ
+                                        (Pervasives.succ (Pervasives.succ
+                                        (Pervasives.succ (Pervasives.succ
+                                        (Pervasives.succ 0)))))))))
+                             in
+                             let idx3 = let _,y = let x,_ = a2 in x in y in
+                             let s =
+                               Int64Word.split2' (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ 0))))))))
+                                 (mul (Pervasives.succ (Pervasives.succ
+                                   (Pervasives.succ 0))) (Pervasives.succ
+                                   (Pervasives.succ (Pervasives.succ
+                                   (Pervasives.succ (Pervasives.succ
+                                   (Pervasives.succ (Pervasives.succ
+                                   (Pervasives.succ 0))))))))) w
+                             in
+                             let c = let _,y = a2 in y in
+                             if Nat.ltb idx3 sz
+                             then let a3 =
+                                    ((CstructBytestring.set_nth sz
+                                       (let x,_ = let x,_ = a2 in x in x)
+                                       idx3
+                                       (Int64Word.split1' (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ 0))))))))
+                                         (mul (Pervasives.succ
+                                           (Pervasives.succ 0))
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           0))))))))) s)),(Pervasives.succ
+                                    idx3)),(test_cache_add_nat.addE c
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ 0)))))))))
+                                  in
+                                  let idx4 = let _,y = let x,_ = a3 in x in y
+                                  in
+                                  let s0 =
+                                    Int64Word.split2' (Pervasives.succ
+                                      (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ 0))))))))
+                                      (mul (Pervasives.succ (Pervasives.succ
+                                        0)) (Pervasives.succ (Pervasives.succ
+                                        (Pervasives.succ (Pervasives.succ
+                                        (Pervasives.succ (Pervasives.succ
+                                        (Pervasives.succ (Pervasives.succ
+                                        0))))))))) s
+                                  in
+                                  let c0 = let _,y = a3 in y in
+                                  if Nat.ltb idx4 sz
+                                  then let a4 =
+                                         ((CstructBytestring.set_nth sz
+                                            (let x,_ = let x,_ = a3 in x in x)
+                                            idx4
+                                            (Int64Word.split1'
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ 0))))))))
+                                              (mul (Pervasives.succ 0)
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ 0)))))))))
+                                              s0)),(Pervasives.succ
+                                         idx4)),(test_cache_add_nat.addE c0
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ 0)))))))))
+                                       in
+                                       let idx5 =
+                                         let _,y = let x,_ = a4 in x in y
+                                       in
+                                       let ce = let _,y = a4 in y in
+                                       if Nat.ltb idx5 sz
+                                       then Some
+                                              (((CstructBytestring.set_nth sz
+                                                  (let x,_ = let x,_ = a4 in x
+                                                   in
+                                                   x) idx5
+                                                  (Int64Word.split2'
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    (Pervasives.succ
+                                                    0))))))))
+                                                    (mul (Pervasives.succ 0)
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      0))))))))) s0)),(Pervasives.succ
+                                              idx5)),(test_cache_add_nat.addE
+                                                       ce (Pervasives.succ
+                                                       (Pervasives.succ
+                                                       (Pervasives.succ
+                                                       (Pervasives.succ
+                                                       (Pervasives.succ
+                                                       (Pervasives.succ
+                                                       (Pervasives.succ
+                                                       (Pervasives.succ
+                                                       0))))))))))
+                                       else None
+                                  else None
+                             else None
+                        else None with
+                  | Some a2 ->
+                    let idx3 = let _,y = let x,_ = a2 in x in y in
+                    if Nat.ltb idx3 sz
+                    then let a3 =
+                           ((CstructBytestring.set_nth sz
+                              (let x,_ = let x,_ = a2 in x in x) idx3
+                              (Int64Word.combine (Pervasives.succ 0)
+                                (Int64Word.ws (r.nS, 0, (Int64Word.w0)))
+                                (add (Pervasives.succ (Pervasives.succ
+                                  (Pervasives.succ 0))) (Pervasives.succ
+                                  (Pervasives.succ (Pervasives.succ
+                                  (Pervasives.succ 0)))))
+                                (Int64Word.combine (Pervasives.succ
+                                  (Pervasives.succ (Pervasives.succ 0)))
+                                  (Int64Word.wzero (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ 0))))
+                                  (Pervasives.succ (Pervasives.succ
+                                  (Pervasives.succ (Pervasives.succ 0))))
+                                  (Int64Word.natToWord (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ 0))))
+                                    (add (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ 0)))))
+                                      (length r.options0)))))),(Pervasives.succ
+                           idx3)),(test_cache_add_nat.addE
+                                    (let _,y = a2 in y) (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ 0)))))))))
+                         in
+                         let idx4 = let _,y = let x,_ = a3 in x in y in
+                         if Nat.ltb idx4 sz
+                         then let a4 =
+                                ((CstructBytestring.set_nth sz
+                                   (let x,_ = let x,_ = a3 in x in x) idx4
                                    (Int64Word.combine (Pervasives.succ 0)
-                                     (Int64Word.ws (r.rST, 0,
+                                     (Int64Word.ws (r.fIN, 0,
                                      (Int64Word.w0)))
                                      (add (Pervasives.succ 0)
                                        (add (Pervasives.succ 0)
                                          (add (Pervasives.succ 0)
                                            (add (Pervasives.succ 0)
-                                             (Pervasives.succ 0)))))
+                                             (add (Pervasives.succ 0)
+                                               (add (Pervasives.succ 0)
+                                                 (Pervasives.succ 0)))))))
                                      (Int64Word.combine (Pervasives.succ 0)
-                                       (Int64Word.ws (r.pSH, 0,
+                                       (Int64Word.ws (r.sYN, 0,
                                        (Int64Word.w0)))
                                        (add (Pervasives.succ 0)
                                          (add (Pervasives.succ 0)
                                            (add (Pervasives.succ 0)
-                                             (Pervasives.succ 0))))
+                                             (add (Pervasives.succ 0)
+                                               (add (Pervasives.succ 0)
+                                                 (Pervasives.succ 0))))))
                                        (Int64Word.combine (Pervasives.succ 0)
-                                         (Int64Word.ws (r.aCK, 0,
+                                         (Int64Word.ws (r.rST, 0,
                                          (Int64Word.w0)))
                                          (add (Pervasives.succ 0)
                                            (add (Pervasives.succ 0)
-                                             (Pervasives.succ 0)))
+                                             (add (Pervasives.succ 0)
+                                               (add (Pervasives.succ 0)
+                                                 (Pervasives.succ 0)))))
                                          (Int64Word.combine (Pervasives.succ
-                                           0) (Int64Word.ws
-                                           ((match r.urgentPointer with
-                                             | Some _ -> true
-                                             | None -> false), 0,
+                                           0) (Int64Word.ws (r.pSH, 0,
                                            (Int64Word.w0)))
                                            (add (Pervasives.succ 0)
-                                             (Pervasives.succ 0))
+                                             (add (Pervasives.succ 0)
+                                               (add (Pervasives.succ 0)
+                                                 (Pervasives.succ 0))))
                                            (Int64Word.combine
                                              (Pervasives.succ 0)
-                                             (Int64Word.ws (r.eCE, 0,
+                                             (Int64Word.ws (r.aCK, 0,
                                              (Int64Word.w0)))
-                                             (Pervasives.succ 0)
-                                             (Int64Word.ws (r.cWR, 0,
-                                             (Int64Word.w0))))))))))
-                               (let _,y = a3 in y) with
-                       | Some a4 ->
-                         setCurrentBytes test_cache test_cache_add_nat sz
-                           (Pervasives.succ (Pervasives.succ 0))
-                           (let x,_ = let x,_ = a4 in x in x)
-                           (let _,y = let x,_ = a4 in x in y) r.windowSize
-                           (let _,y = a4 in y)
-                       | None -> None)
-                    | None -> None)
-                 | None -> None)
-              | None -> None)
-           | None -> None)
-        | None -> None with
+                                             (add (Pervasives.succ 0)
+                                               (add (Pervasives.succ 0)
+                                                 (Pervasives.succ 0)))
+                                             (Int64Word.combine
+                                               (Pervasives.succ 0)
+                                               (Int64Word.ws
+                                               ((match r.urgentPointer with
+                                                 | Some _ -> true
+                                                 | None -> false), 0,
+                                               (Int64Word.w0)))
+                                               (add (Pervasives.succ 0)
+                                                 (Pervasives.succ 0))
+                                               (Int64Word.combine
+                                                 (Pervasives.succ 0)
+                                                 (Int64Word.ws (r.eCE, 0,
+                                                 (Int64Word.w0)))
+                                                 (Pervasives.succ 0)
+                                                 (Int64Word.ws (r.cWR, 0,
+                                                 (Int64Word.w0))))))))))),(Pervasives.succ
+                                idx4)),(test_cache_add_nat.addE
+                                         (let _,y = a3 in y) (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ 0)))))))))
+                              in
+                              let idx5 = let _,y = let x,_ = a4 in x in y in
+                              let w = r.windowSize in
+                              if Nat.ltb idx5 sz
+                              then let a5 =
+                                     ((CstructBytestring.set_nth sz
+                                        (let x,_ = let x,_ = a4 in x in x)
+                                        idx5
+                                        (Int64Word.split1' (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ 0))))))))
+                                          (mul (Pervasives.succ 0)
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            0))))))))) w)),(Pervasives.succ
+                                     idx5)),(test_cache_add_nat.addE
+                                              (let _,y = a4 in y)
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ 0)))))))))
+                                   in
+                                   let idx6 = let _,y = let x,_ = a5 in x in y
+                                   in
+                                   let ce = let _,y = a5 in y in
+                                   if Nat.ltb idx6 sz
+                                   then Some
+                                          (((CstructBytestring.set_nth sz
+                                              (let x,_ = let x,_ = a5 in x in
+                                               x) idx6
+                                              (Int64Word.split2'
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ 0))))))))
+                                                (mul (Pervasives.succ 0)
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ 0)))))))))
+                                                w)),(Pervasives.succ
+                                          idx6)),(test_cache_add_nat.addE ce
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ 0))))))))))
+                                   else None
+                              else None
+                         else None
+                    else None
+                  | None -> None)
+               | None -> None)
+            | None -> None)
+         | None -> None) with
   | Some a ->
-    (match setCurrentByte test_cache test_cache_add_nat sz
-             (let x,_ = let x,_ = a in x in x)
-             (let _,y = let x,_ = a in x in y)
-             (Int64Word.wzero (Pervasives.succ (Pervasives.succ
-               (Pervasives.succ (Pervasives.succ (Pervasives.succ
-               (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))))))
-             (let _,y = a in y) with
-     | Some a0 ->
-       (match setCurrentByte test_cache test_cache_add_nat sz
-                (let x,_ = let x,_ = a0 in x in x)
-                (let _,y = let x,_ = a0 in x in y)
-                (Int64Word.wzero (Pervasives.succ (Pervasives.succ
-                  (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                  (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                  0))))))))) (let _,y = a0 in y) with
-        | Some a1 ->
-          (match match aligned_option_encode test_cache (fun n0 ->
-                         setCurrentBytes test_cache test_cache_add_nat n0
-                           (Pervasives.succ (Pervasives.succ 0)))
-                         (fun n0 v0 idx _ env ->
-                         setCurrentBytes test_cache test_cache_add_nat n0
-                           (Pervasives.succ (Pervasives.succ 0)) v0 idx
-                           (Int64Word.wzero (Pervasives.succ (Pervasives.succ
-                             (Pervasives.succ (Pervasives.succ
-                             (Pervasives.succ (Pervasives.succ
-                             (Pervasives.succ (Pervasives.succ
-                             (Pervasives.succ (Pervasives.succ
-                             (Pervasives.succ (Pervasives.succ
-                             (Pervasives.succ (Pervasives.succ
-                             (Pervasives.succ (Pervasives.succ
-                             0))))))))))))))))) env) sz
-                         (let x,_ = let x,_ = a1 in x in x)
-                         (let _,y = let x,_ = a1 in x in y) r.urgentPointer
-                         (let _,y = a1 in y) with
-                 | Some a2 ->
-                   (match alignedEncodeList test_cache (fun n0 ->
-                            setCurrentBytes test_cache test_cache_add_nat n0
-                              (Pervasives.succ (Pervasives.succ
-                              (Pervasives.succ (Pervasives.succ 0))))) sz
-                            (let x,_ = let x,_ = a2 in x in x)
-                            (let _,y = let x,_ = a2 in x in y) r.options0
-                            (let _,y = a2 in y) with
-                    | Some a3 ->
-                      alignedEncodeCharList test_cache test_cache_add_nat sz
-                        (let x,_ = let x,_ = a3 in x in x)
-                        (let _,y = let x,_ = a3 in x in y) r.payload
-                        (let _,y = a3 in y)
-                    | None -> None)
-                 | None -> None with
-           | Some a2 ->
-             calculate_PseudoChecksum sz srcAddr destAddr tcpLength
-               (Int64Word.natToWord (Pervasives.succ (Pervasives.succ
-                 (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                 (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))))
-                 (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                 (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))))
-               (Pervasives.succ (Pervasives.succ (Pervasives.succ
-               (Pervasives.succ (Pervasives.succ (Pervasives.succ
-               (Pervasives.succ (Pervasives.succ (Pervasives.succ
-               (Pervasives.succ (Pervasives.succ (Pervasives.succ
-               (Pervasives.succ (Pervasives.succ (Pervasives.succ
-               (Pervasives.succ 0))))))))))))))))
-               (let x,_ = let x,_ = a2 in x in x)
-               (let _,y = let x,_ = a2 in x in y) r (let _,y = a2 in y)
-           | None -> None)
-        | None -> None)
-     | None -> None)
+    let idx = let _,y = let x,_ = a in x in y in
+    if Nat.ltb idx sz
+    then let a0 =
+           ((CstructBytestring.set_nth sz (let x,_ = let x,_ = a in x in x)
+              idx
+              (Int64Word.wzero (Pervasives.succ (Pervasives.succ
+                (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))))))),(Pervasives.succ
+           idx)),(test_cache_add_nat.addE (let _,y = a in y) (Pervasives.succ
+                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                   (Pervasives.succ 0)))))))))
+         in
+         let idx0 = let _,y = let x,_ = a0 in x in y in
+         if Nat.ltb idx0 sz
+         then let a1 =
+                ((CstructBytestring.set_nth sz
+                   (let x,_ = let x,_ = a0 in x in x) idx0
+                   (Int64Word.wzero (Pervasives.succ (Pervasives.succ
+                     (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                     (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                     0)))))))))),(Pervasives.succ
+                idx0)),(test_cache_add_nat.addE (let _,y = a0 in y)
+                         (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                         (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                         (Pervasives.succ (Pervasives.succ 0)))))))))
+              in
+              (match match aligned_option_encode test_cache
+                             (fun n0 v0 idx1 w c ->
+                             if Nat.ltb idx1 n0
+                             then let a2 =
+                                    ((CstructBytestring.set_nth n0 v0 idx1
+                                       (Int64Word.split1' (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ 0))))))))
+                                         (mul (Pervasives.succ 0)
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           0))))))))) w)),(Pervasives.succ
+                                    idx1)),(test_cache_add_nat.addE c
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ 0)))))))))
+                                  in
+                                  let idx2 = let _,y = let x,_ = a2 in x in y
+                                  in
+                                  let ce = let _,y = a2 in y in
+                                  if Nat.ltb idx2 n0
+                                  then Some
+                                         (((CstructBytestring.set_nth n0
+                                             (let x,_ = let x,_ = a2 in x in x)
+                                             idx2
+                                             (Int64Word.split2'
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ 0))))))))
+                                               (mul (Pervasives.succ 0)
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ 0)))))))))
+                                               w)),(Pervasives.succ
+                                         idx2)),(test_cache_add_nat.addE ce
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ 0))))))))))
+                                  else None
+                             else None) (fun n0 v0 idx1 _ env ->
+                             let w =
+                               Int64Word.wzero (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ 0))))))))))))))))
+                             in
+                             if Nat.ltb idx1 n0
+                             then let a2 =
+                                    ((CstructBytestring.set_nth n0 v0 idx1
+                                       (Int64Word.split1' (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ 0))))))))
+                                         (mul (Pervasives.succ 0)
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           0))))))))) w)),(Pervasives.succ
+                                    idx1)),(test_cache_add_nat.addE env
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ 0)))))))))
+                                  in
+                                  let idx2 = let _,y = let x,_ = a2 in x in y
+                                  in
+                                  let ce = let _,y = a2 in y in
+                                  if Nat.ltb idx2 n0
+                                  then Some
+                                         (((CstructBytestring.set_nth n0
+                                             (let x,_ = let x,_ = a2 in x in x)
+                                             idx2
+                                             (Int64Word.split2'
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ
+                                               (Pervasives.succ 0))))))))
+                                               (mul (Pervasives.succ 0)
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ 0)))))))))
+                                               w)),(Pervasives.succ
+                                         idx2)),(test_cache_add_nat.addE ce
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ
+                                                  (Pervasives.succ 0))))))))))
+                                  else None
+                             else None) sz (let x,_ = let x,_ = a1 in x in x)
+                             (let _,y = let x,_ = a1 in x in y)
+                             r.urgentPointer (let _,y = a1 in y) with
+                     | Some a2 ->
+                       (match alignedEncodeList test_cache
+                                (fun n0 v0 idx1 w c ->
+                                if Nat.ltb idx1 n0
+                                then let a3 =
+                                       ((CstructBytestring.set_nth n0 v0 idx1
+                                          (Int64Word.split1' (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ (Pervasives.succ
+                                            (Pervasives.succ 0))))))))
+                                            (mul (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ 0)))
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ 0))))))))) w)),(Pervasives.succ
+                                       idx1)),(test_cache_add_nat.addE c
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ 0)))))))))
+                                     in
+                                     let idx2 =
+                                       let _,y = let x,_ = a3 in x in y
+                                     in
+                                     let s =
+                                       Int64Word.split2' (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ (Pervasives.succ
+                                         (Pervasives.succ 0))))))))
+                                         (mul (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           0))) (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ (Pervasives.succ
+                                           (Pervasives.succ 0))))))))) w
+                                     in
+                                     let c0 = let _,y = a3 in y in
+                                     if Nat.ltb idx2 n0
+                                     then let a4 =
+                                            ((CstructBytestring.set_nth n0
+                                               (let x,_ = let x,_ = a3 in x in
+                                                x) idx2
+                                               (Int64Word.split1'
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ
+                                                 (Pervasives.succ 0))))))))
+                                                 (mul (Pervasives.succ
+                                                   (Pervasives.succ 0))
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ 0)))))))))
+                                                 s)),(Pervasives.succ
+                                            idx2)),(test_cache_add_nat.addE
+                                                     c0 (Pervasives.succ
+                                                     (Pervasives.succ
+                                                     (Pervasives.succ
+                                                     (Pervasives.succ
+                                                     (Pervasives.succ
+                                                     (Pervasives.succ
+                                                     (Pervasives.succ
+                                                     (Pervasives.succ
+                                                     0)))))))))
+                                          in
+                                          let idx3 =
+                                            let _,y = let x,_ = a4 in x in y
+                                          in
+                                          let s0 =
+                                            Int64Word.split2'
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ
+                                              (Pervasives.succ 0))))))))
+                                              (mul (Pervasives.succ
+                                                (Pervasives.succ 0))
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ 0))))))))) s
+                                          in
+                                          let c1 = let _,y = a4 in y in
+                                          if Nat.ltb idx3 n0
+                                          then let a5 =
+                                                 ((CstructBytestring.set_nth
+                                                    n0
+                                                    (let x,_ =
+                                                       let x,_ = a4 in x
+                                                     in
+                                                     x) idx3
+                                                    (Int64Word.split1'
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      (Pervasives.succ
+                                                      0))))))))
+                                                      (mul (Pervasives.succ
+                                                        0) (Pervasives.succ
+                                                        (Pervasives.succ
+                                                        (Pervasives.succ
+                                                        (Pervasives.succ
+                                                        (Pervasives.succ
+                                                        (Pervasives.succ
+                                                        (Pervasives.succ
+                                                        (Pervasives.succ
+                                                        0))))))))) s0)),(Pervasives.succ
+                                                 idx3)),(test_cache_add_nat.addE
+                                                          c1 (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          0)))))))))
+                                               in
+                                               let idx4 =
+                                                 let _,y = let x,_ = a5 in x
+                                                 in
+                                                 y
+                                               in
+                                               let ce = let _,y = a5 in y in
+                                               if Nat.ltb idx4 n0
+                                               then Some
+                                                      (((CstructBytestring.set_nth
+                                                          n0
+                                                          (let x,_ =
+                                                             let x,_ = a5 in x
+                                                           in
+                                                           x) idx4
+                                                          (Int64Word.split2'
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            (Pervasives.succ
+                                                            0))))))))
+                                                            (mul
+                                                              (Pervasives.succ
+                                                              0)
+                                                              (Pervasives.succ
+                                                              (Pervasives.succ
+                                                              (Pervasives.succ
+                                                              (Pervasives.succ
+                                                              (Pervasives.succ
+                                                              (Pervasives.succ
+                                                              (Pervasives.succ
+                                                              (Pervasives.succ
+                                                              0))))))))) s0)),(Pervasives.succ
+                                                      idx4)),(test_cache_add_nat.addE
+                                                               ce
+                                                               (Pervasives.succ
+                                                               (Pervasives.succ
+                                                               (Pervasives.succ
+                                                               (Pervasives.succ
+                                                               (Pervasives.succ
+                                                               (Pervasives.succ
+                                                               (Pervasives.succ
+                                                               (Pervasives.succ
+                                                               0))))))))))
+                                               else None
+                                          else None
+                                     else None
+                                else None) sz
+                                (let x,_ = let x,_ = a2 in x in x)
+                                (let _,y = let x,_ = a2 in x in y) r.options0
+                                (let _,y = a2 in y) with
+                        | Some a3 ->
+                          alignedEncodeByteBuffer test_cache
+                            test_cache_add_nat sz
+                            (let x,_ = let x,_ = a3 in x in x)
+                            (let _,y = let x,_ = a3 in x in y) r.payload
+                            (let _,y = a3 in y)
+                        | None -> None)
+                     | None -> None with
+               | Some a2 ->
+                 calculate_PseudoChecksum sz srcAddr destAddr tcpLength
+                   (Int64Word.natToWord (Pervasives.succ (Pervasives.succ
+                     (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                     (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                     0)))))))) (Pervasives.succ (Pervasives.succ
+                     (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                     (Pervasives.succ 0))))))) (Pervasives.succ
+                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                   0)))))))))))))))) (let x,_ = let x,_ = a2 in x in x)
+                   (let _,y = let x,_ = a2 in x in y) r (let _,y = a2 in y)
+               | None -> None)
+         else None
+    else None
   | None -> None
 
 (** val tCP_decoder_impl :
-    Int64Word.t ArrayVector.storage_t -> Int64Word.t ArrayVector.storage_t ->
-    Int64Word.t -> OCamlNativeInt.t -> char ArrayVector.storage_t ->
+    CstructBytestring.storage_t -> CstructBytestring.storage_t -> Int64Word.t
+    -> OCamlNativeInt.t -> CstructBytestring.storage_t ->
     ((tCP_Packet*OCamlNativeInt.t)*unit) option **)
 
 let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
@@ -6593,65 +8258,116 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
        (Int64Word.w0)))))))))))))))))))))))))))))))))
   then let idx = Obj.magic 0 in
        let c = Obj.magic () in
-       (match getCurrentByte test_cache test_cache_add_nat sz v idx c with
+       (match CstructBytestring.nth_opt sz v idx with
         | Some a ->
-          (match getCurrentByte test_cache test_cache_add_nat sz v
-                   (let _,y = let x,_ = a in x in y) (let _,y = a in y) with
-           | Some a0 ->
-             let a1 =
+          let a0 = (a,(Pervasives.succ
+            idx)),(test_cache_add_nat.addD c (Pervasives.succ
+                    (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                    (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                    (Pervasives.succ 0)))))))))
+          in
+          let idx0 = let _,y = let x,_ = a0 in x in y in
+          (match CstructBytestring.nth_opt sz v idx0 with
+           | Some a1 ->
+             let a2 = (a1,(Pervasives.succ
+               idx0)),(test_cache_add_nat.addD (let _,y = a0 in y)
+                        (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                        (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                        (Pervasives.succ (Pervasives.succ 0)))))))))
+             in
+             let a3 =
                ((Int64Word.append (Pervasives.succ (Pervasives.succ
                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
                   0)))))))) (Pervasives.succ (Pervasives.succ
                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                  0)))))))) (let x,_ = let x,_ = a0 in x in x)
-                  (let x,_ = let x,_ = a in x in x)),(let _,y =
-                                                        let x,_ = a0 in x
-                                                      in
-                                                      y)),(let _,y = a0 in y)
+                  0)))))))) (let x,_ = let x,_ = a2 in x in x)
+                  (let x,_ = let x,_ = a0 in x in x)),(let _,y =
+                                                         let x,_ = a2 in x
+                                                       in
+                                                       y)),(let _,y = a2 in y)
              in
-             (match getCurrentByte test_cache test_cache_add_nat sz v
-                      (let _,y = let x,_ = a1 in x in y) (let _,y = a1 in y) with
-              | Some a2 ->
-                (match getCurrentByte test_cache test_cache_add_nat sz v
-                         (let _,y = let x,_ = a2 in x in y)
-                         (let _,y = a2 in y) with
-                 | Some a3 ->
-                   let a4 =
+             let idx1 = let _,y = let x,_ = a3 in x in y in
+             (match CstructBytestring.nth_opt sz v idx1 with
+              | Some a4 ->
+                let a5 = (a4,(Pervasives.succ
+                  idx1)),(test_cache_add_nat.addD (let _,y = a3 in y)
+                           (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                           (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                           (Pervasives.succ (Pervasives.succ 0)))))))))
+                in
+                let idx2 = let _,y = let x,_ = a5 in x in y in
+                (match CstructBytestring.nth_opt sz v idx2 with
+                 | Some a6 ->
+                   let a7 = (a6,(Pervasives.succ
+                     idx2)),(test_cache_add_nat.addD (let _,y = a5 in y)
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ 0)))))))))
+                   in
+                   let a8 =
                      ((Int64Word.append (Pervasives.succ (Pervasives.succ
                         (Pervasives.succ (Pervasives.succ (Pervasives.succ
                         (Pervasives.succ (Pervasives.succ (Pervasives.succ
                         0)))))))) (Pervasives.succ (Pervasives.succ
                         (Pervasives.succ (Pervasives.succ (Pervasives.succ
                         (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                        0)))))))) (let x,_ = let x,_ = a3 in x in x)
-                        (let x,_ = let x,_ = a2 in x in x)),(let _,y =
-                                                               let x,_ = a3 in
+                        0)))))))) (let x,_ = let x,_ = a7 in x in x)
+                        (let x,_ = let x,_ = a5 in x in x)),(let _,y =
+                                                               let x,_ = a7 in
                                                                x
                                                              in
-                                                             y)),(let _,y = a3
+                                                             y)),(let _,y = a7
                                                                   in
                                                                   y)
                    in
-                   (match getCurrentByte test_cache test_cache_add_nat sz v
-                            (let _,y = let x,_ = a4 in x in y)
-                            (let _,y = a4 in y) with
-                    | Some a5 ->
-                      (match getCurrentByte test_cache test_cache_add_nat sz
-                               v (let _,y = let x,_ = a5 in x in y)
-                               (let _,y = a5 in y) with
-                       | Some a6 ->
-                         (match getCurrentByte test_cache test_cache_add_nat
-                                  sz v (let _,y = let x,_ = a6 in x in y)
-                                  (let _,y = a6 in y) with
-                          | Some a7 ->
-                            (match getCurrentByte test_cache
-                                     test_cache_add_nat sz v
-                                     (let _,y = let x,_ = a7 in x in y)
-                                     (let _,y = a7 in y) with
-                             | Some a8 ->
-                               let a9 =
+                   let idx3 = let _,y = let x,_ = a8 in x in y in
+                   (match CstructBytestring.nth_opt sz v idx3 with
+                    | Some a9 ->
+                      let a10 = (a9,(Pervasives.succ
+                        idx3)),(test_cache_add_nat.addD (let _,y = a8 in y)
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ 0)))))))))
+                      in
+                      let idx4 = let _,y = let x,_ = a10 in x in y in
+                      (match CstructBytestring.nth_opt sz v idx4 with
+                       | Some a11 ->
+                         let a12 = (a11,(Pervasives.succ
+                           idx4)),(test_cache_add_nat.addD
+                                    (let _,y = a10 in y) (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ 0)))))))))
+                         in
+                         let idx5 = let _,y = let x,_ = a12 in x in y in
+                         (match CstructBytestring.nth_opt sz v idx5 with
+                          | Some a13 ->
+                            let a14 = (a13,(Pervasives.succ
+                              idx5)),(test_cache_add_nat.addD
+                                       (let _,y = a12 in y) (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ 0)))))))))
+                            in
+                            let idx6 = let _,y = let x,_ = a14 in x in y in
+                            (match CstructBytestring.nth_opt sz v idx6 with
+                             | Some a15 ->
+                               let a16 = (a15,(Pervasives.succ
+                                 idx6)),(test_cache_add_nat.addD
+                                          (let _,y = a14 in y)
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          (Pervasives.succ (Pervasives.succ
+                                          0)))))))))
+                               in
+                               let a17 =
                                  ((Int64Word.append (Pervasives.succ
                                     (Pervasives.succ (Pervasives.succ
                                     (Pervasives.succ (Pervasives.succ
@@ -6671,7 +8387,7 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
                                         (Pervasives.succ (Pervasives.succ
                                         (Pervasives.succ (Pervasives.succ
                                         (Pervasives.succ 0))))))))))
-                                    (let x,_ = let x,_ = a8 in x in x)
+                                    (let x,_ = let x,_ = a16 in x in x)
                                     (Int64Word.append (Pervasives.succ
                                       (Pervasives.succ (Pervasives.succ
                                       (Pervasives.succ (Pervasives.succ
@@ -6686,7 +8402,7 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
                                         (Pervasives.succ (Pervasives.succ
                                         (Pervasives.succ (Pervasives.succ
                                         (Pervasives.succ 0)))))))))
-                                      (let x,_ = let x,_ = a7 in x in x)
+                                      (let x,_ = let x,_ = a14 in x in x)
                                       (Int64Word.append (Pervasives.succ
                                         (Pervasives.succ (Pervasives.succ
                                         (Pervasives.succ (Pervasives.succ
@@ -6697,33 +8413,80 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
                                         (Pervasives.succ (Pervasives.succ
                                         (Pervasives.succ (Pervasives.succ
                                         0))))))))
-                                        (let x,_ = let x,_ = a6 in x in x)
-                                        (let x,_ = let x,_ = a5 in x in x)))),
-                                 (let _,y = let x,_ = a8 in x in y)),
-                                 (let _,y = a8 in y)
+                                        (let x,_ = let x,_ = a12 in x in x)
+                                        (let x,_ = let x,_ = a10 in x in x)))),
+                                 (let _,y = let x,_ = a16 in x in y)),
+                                 (let _,y = a16 in y)
                                in
-                               (match getCurrentByte test_cache
-                                        test_cache_add_nat sz v
-                                        (let _,y = let x,_ = a9 in x in y)
-                                        (let _,y = a9 in y) with
-                                | Some a10 ->
-                                  (match getCurrentByte test_cache
-                                           test_cache_add_nat sz v
-                                           (let _,y = let x,_ = a10 in x in y)
-                                           (let _,y = a10 in y) with
-                                   | Some a11 ->
-                                     (match getCurrentByte test_cache
-                                              test_cache_add_nat sz v
-                                              (let _,y = let x,_ = a11 in x in
-                                               y) (let _,y = a11 in y) with
-                                      | Some a12 ->
-                                        (match getCurrentByte test_cache
-                                                 test_cache_add_nat sz v
-                                                 (let _,y = let x,_ = a12 in x
-                                                  in
-                                                  y) (let _,y = a12 in y) with
-                                         | Some a13 ->
-                                           let a14 =
+                               let idx7 = let _,y = let x,_ = a17 in x in y in
+                               (match CstructBytestring.nth_opt sz v idx7 with
+                                | Some a18 ->
+                                  let a19 = (a18,(Pervasives.succ
+                                    idx7)),(test_cache_add_nat.addD
+                                             (let _,y = a17 in y)
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ
+                                             (Pervasives.succ 0)))))))))
+                                  in
+                                  let idx8 = let _,y = let x,_ = a19 in x in y
+                                  in
+                                  (match CstructBytestring.nth_opt sz v idx8 with
+                                   | Some a20 ->
+                                     let a21 = (a20,(Pervasives.succ
+                                       idx8)),(test_cache_add_nat.addD
+                                                (let _,y = a19 in y)
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ
+                                                (Pervasives.succ 0)))))))))
+                                     in
+                                     let idx9 =
+                                       let _,y = let x,_ = a21 in x in y
+                                     in
+                                     (match CstructBytestring.nth_opt sz v
+                                              idx9 with
+                                      | Some a22 ->
+                                        let a23 = (a22,(Pervasives.succ
+                                          idx9)),(test_cache_add_nat.addD
+                                                   (let _,y = a21 in y)
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ
+                                                   (Pervasives.succ 0)))))))))
+                                        in
+                                        let idx10 =
+                                          let _,y = let x,_ = a23 in x in y
+                                        in
+                                        (match CstructBytestring.nth_opt sz v
+                                                 idx10 with
+                                         | Some a24 ->
+                                           let a25 = (a24,(Pervasives.succ
+                                             idx10)),(test_cache_add_nat.addD
+                                                       (let _,y = a23 in y)
+                                                       (Pervasives.succ
+                                                       (Pervasives.succ
+                                                       (Pervasives.succ
+                                                       (Pervasives.succ
+                                                       (Pervasives.succ
+                                                       (Pervasives.succ
+                                                       (Pervasives.succ
+                                                       (Pervasives.succ
+                                                       0)))))))))
+                                           in
+                                           let a26 =
                                              ((Int64Word.append
                                                 (Pervasives.succ
                                                 (Pervasives.succ
@@ -6759,7 +8522,7 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
                                                     (Pervasives.succ
                                                     (Pervasives.succ
                                                     0))))))))))
-                                                (let x,_ = let x,_ = a13 in x
+                                                (let x,_ = let x,_ = a25 in x
                                                  in
                                                  x)
                                                 (Int64Word.append
@@ -6790,7 +8553,7 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
                                                     (Pervasives.succ
                                                     0)))))))))
                                                   (let x,_ =
-                                                     let x,_ = a12 in x
+                                                     let x,_ = a23 in x
                                                    in
                                                    x)
                                                   (Int64Word.append
@@ -6813,73 +8576,125 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
                                                     (Pervasives.succ
                                                     0))))))))
                                                     (let x,_ =
-                                                       let x,_ = a11 in x
+                                                       let x,_ = a21 in x
                                                      in
                                                      x)
                                                     (let x,_ =
-                                                       let x,_ = a10 in x
+                                                       let x,_ = a19 in x
                                                      in
                                                      x)))),(let _,y =
-                                                              let x,_ = a13 in
+                                                              let x,_ = a25 in
                                                               x
                                                             in
-                                                            y)),(let _,y = a13
+                                                            y)),(let _,y = a25
                                                                  in
                                                                  y)
                                            in
-                                           (match getCurrentByte test_cache
-                                                    test_cache_add_nat sz v
-                                                    (let _,y =
-                                                       let x,_ = a14 in x
-                                                     in
-                                                     y) (let _,y = a14 in y) with
-                                            | Some a15 ->
+                                           let idx11 =
+                                             let _,y = let x,_ = a26 in x in y
+                                           in
+                                           (match CstructBytestring.nth_opt
+                                                    sz v idx11 with
+                                            | Some a27 ->
+                                              let a28 = (a27,(Pervasives.succ
+                                                idx11)),(test_cache_add_nat.addD
+                                                          (let _,y = a26 in y)
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          (Pervasives.succ
+                                                          0)))))))))
+                                              in
                                               let b =
-                                                let x,_ = let x,_ = a15 in x
+                                                let x,_ = let x,_ = a28 in x
                                                 in
                                                 x
                                               in
-                                              (match getCurrentByte
-                                                       test_cache
-                                                       test_cache_add_nat sz
-                                                       v
-                                                       (let _,y =
-                                                          let x,_ = a15 in x
-                                                        in
-                                                        y)
-                                                       (let _,y = a15 in y) with
-                                               | Some a16 ->
+                                              let idx12 =
+                                                let _,y = let x,_ = a28 in x
+                                                in
+                                                y
+                                              in
+                                              (match CstructBytestring.nth_opt
+                                                       sz v idx12 with
+                                               | Some a29 ->
+                                                 let a30 =
+                                                   (a29,(Pervasives.succ
+                                                   idx12)),(test_cache_add_nat.addD
+                                                             (let _,y = a28 in
+                                                              y)
+                                                             (Pervasives.succ
+                                                             (Pervasives.succ
+                                                             (Pervasives.succ
+                                                             (Pervasives.succ
+                                                             (Pervasives.succ
+                                                             (Pervasives.succ
+                                                             (Pervasives.succ
+                                                             (Pervasives.succ
+                                                             0)))))))))
+                                                 in
                                                  let b0 =
                                                    let x,_ =
-                                                     let x,_ = a16 in x
+                                                     let x,_ = a30 in x
                                                    in
                                                    x
                                                  in
-                                                 (match getCurrentByte
-                                                          test_cache
-                                                          test_cache_add_nat
-                                                          sz v
-                                                          (let _,y =
-                                                             let x,_ = a16 in
-                                                             x
-                                                           in
-                                                           y)
-                                                          (let _,y = a16 in y) with
-                                                  | Some a17 ->
-                                                    (match getCurrentByte
-                                                             test_cache
-                                                             test_cache_add_nat
-                                                             sz v
-                                                             (let _,y =
-                                                                let x,_ = a17
-                                                                in
-                                                                x
-                                                              in
-                                                              y)
-                                                             (let _,y = a17 in
-                                                              y) with
-                                                     | Some a18 ->
-                                                       let a19 =
+                                                 let idx13 =
+                                                   let _,y =
+                                                     let x,_ = a30 in x
+                                                   in
+                                                   y
+                                                 in
+                                                 (match CstructBytestring.nth_opt
+                                                          sz v idx13 with
+                                                  | Some a31 ->
+                                                    let a32 =
+                                                      (a31,(Pervasives.succ
+                                                      idx13)),(test_cache_add_nat.addD
+                                                                (let _,y = a30
+                                                                 in
+                                                                 y)
+                                                                (Pervasives.succ
+                                                                (Pervasives.succ
+                                                                (Pervasives.succ
+                                                                (Pervasives.succ
+                                                                (Pervasives.succ
+                                                                (Pervasives.succ
+                                                                (Pervasives.succ
+                                                                (Pervasives.succ
+                                                                0)))))))))
+                                                    in
+                                                    let idx14 =
+                                                      let _,y =
+                                                        let x,_ = a32 in x
+                                                      in
+                                                      y
+                                                    in
+                                                    (match CstructBytestring.nth_opt
+                                                             sz v idx14 with
+                                                     | Some a33 ->
+                                                       let a34 =
+                                                         (a33,(Pervasives.succ
+                                                         idx14)),(test_cache_add_nat.addD
+                                                                   (let _,y =
+                                                                    a32
+                                                                    in
+                                                                    y)
+                                                                   (Pervasives.succ
+                                                                   (Pervasives.succ
+                                                                   (Pervasives.succ
+                                                                   (Pervasives.succ
+                                                                   (Pervasives.succ
+                                                                   (Pervasives.succ
+                                                                   (Pervasives.succ
+                                                                   (Pervasives.succ
+                                                                   0)))))))))
+                                                       in
+                                                       let a35 =
                                                          ((Int64Word.append
                                                             (Pervasives.succ
                                                             (Pervasives.succ
@@ -6900,24 +8715,24 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
                                                             (Pervasives.succ
                                                             0))))))))
                                                             (let x,_ =
-                                                               let x,_ = a18
+                                                               let x,_ = a34
                                                                in
                                                                x
                                                              in
                                                              x)
                                                             (let x,_ =
-                                                               let x,_ = a17
+                                                               let x,_ = a32
                                                                in
                                                                x
                                                              in
                                                              x)),(let _,y =
                                                                     let x,_ =
-                                                                    a18
+                                                                    a34
                                                                     in
                                                                     x
                                                                   in
                                                                   y)),
-                                                         (let _,y = a18 in y)
+                                                         (let _,y = a34 in y)
                                                        in
                                                        (match skipCurrentByte
                                                                 test_cache
@@ -6925,49 +8740,224 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
                                                                 sz v
                                                                 (let _,y =
                                                                    let x,_ =
-                                                                    a19
+                                                                    a35
                                                                    in
                                                                    x
                                                                  in
                                                                  y)
-                                                                (let _,y = a19
+                                                                (let _,y = a35
                                                                  in
                                                                  y) with
-                                                        | Some a20 ->
+                                                        | Some a36 ->
                                                           (match skipCurrentByte
                                                                    test_cache
                                                                    test_cache_add_nat
                                                                    sz v
                                                                    (let _,y =
                                                                     let x,_ =
-                                                                    a20
+                                                                    a36
                                                                     in
                                                                     x
                                                                     in
                                                                     y)
                                                                    (let _,y =
-                                                                    a20
+                                                                    a36
                                                                     in
                                                                     y) with
-                                                           | Some a21 ->
+                                                           | Some a37 ->
                                                              (match aligned_option_decode
                                                                     test_cache
-                                                                    (fun numBytes ->
-                                                                    getCurrentBytes
-                                                                    test_cache
-                                                                    test_cache_add_nat
+                                                                    (fun numBytes v0 idx15 c0 ->
+                                                                    match 
+                                                                    CstructBytestring.nth_opt
                                                                     numBytes
+                                                                    v0 idx15 with
+                                                                    | Some a38 ->
+                                                                    let a39 =
+                                                                    (a38,(Pervasives.succ
+                                                                    idx15)),
+                                                                    (test_cache_add_nat.addD
+                                                                    c0
                                                                     (Pervasives.succ
                                                                     (Pervasives.succ
-                                                                    0)))
-                                                                    (fun numBytes v0 idx0 c0 ->
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    in
+                                                                    let idx16 =
+                                                                    let _,y =
+                                                                    let x,_ =
+                                                                    a39
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    y
+                                                                    in
+                                                                    (
+                                                                    match 
+                                                                    match 
+                                                                    CstructBytestring.nth_opt
+                                                                    numBytes
+                                                                    v0 idx16 with
+                                                                    | Some a40 ->
+                                                                    let a41 =
+                                                                    (a40,(Pervasives.succ
+                                                                    idx16)),
+                                                                    (test_cache_add_nat.addD
+                                                                    (
+                                                                    let _,y =
+                                                                    a39
+                                                                    in
+                                                                    y)
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    in
+                                                                    let a42 =
+                                                                    ((Int64Word.w0),
+                                                                    (
+                                                                    let _,y =
+                                                                    let x,_ =
+                                                                    a41
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    y)),
+                                                                    (
+                                                                    let _,y =
+                                                                    a41
+                                                                    in
+                                                                    y)
+                                                                    in
+                                                                    Some
+                                                                    ((
+                                                                    (Int64Word.append
+                                                                    (mul 0
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0))))))))
+                                                                    (
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a42
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x)
+                                                                    (
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a41
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x)),
+                                                                    (
+                                                                    let _,y =
+                                                                    let x,_ =
+                                                                    a42
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    y)),
+                                                                    (
+                                                                    let _,y =
+                                                                    a42
+                                                                    in
+                                                                    y))
+                                                                    | None ->
+                                                                    None with
+                                                                    | Some a40 ->
+                                                                    Some
+                                                                    (((Int64Word.append
+                                                                    (mul
+                                                                    (Pervasives.succ
+                                                                    0)
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0))))))))
+                                                                    (
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a40
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x)
+                                                                    (
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a39
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x)),
+                                                                    (
+                                                                    let _,y =
+                                                                    let x,_ =
+                                                                    a40
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    y)),
+                                                                    (
+                                                                    let _,y =
+                                                                    a40
+                                                                    in
+                                                                    y))
+                                                                    | None ->
+                                                                    None)
+                                                                    | None ->
+                                                                    None)
+                                                                    (fun numBytes v0 idx15 c0 ->
                                                                     match 
                                                                     skipCurrentByte
                                                                     test_cache
                                                                     test_cache_add_nat
                                                                     numBytes
-                                                                    v0 idx0 c0 with
-                                                                    | Some a22 ->
+                                                                    v0 idx15
+                                                                    c0 with
+                                                                    | Some a38 ->
                                                                     (match 
                                                                     match 
                                                                     skipCurrentByte
@@ -6978,30 +8968,30 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
                                                                     (
                                                                     let _,y =
                                                                     let x,_ =
-                                                                    a22
+                                                                    a38
                                                                     in
                                                                     x
                                                                     in
                                                                     y)
                                                                     (
                                                                     let _,y =
-                                                                    a22
+                                                                    a38
                                                                     in
                                                                     y) with
-                                                                    | Some a23 ->
-                                                                    let a24 =
+                                                                    | Some a39 ->
+                                                                    let a40 =
                                                                     ((),
                                                                     (
                                                                     let _,y =
                                                                     let x,_ =
-                                                                    a23
+                                                                    a39
                                                                     in
                                                                     x
                                                                     in
                                                                     y)),
                                                                     (
                                                                     let _,y =
-                                                                    a23
+                                                                    a39
                                                                     in
                                                                     y)
                                                                     in
@@ -7010,32 +9000,32 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
                                                                     (
                                                                     let _,y =
                                                                     let x,_ =
-                                                                    a24
+                                                                    a40
                                                                     in
                                                                     x
                                                                     in
                                                                     y)),
                                                                     (
                                                                     let _,y =
-                                                                    a24
+                                                                    a40
                                                                     in
                                                                     y))
                                                                     | None ->
                                                                     None with
-                                                                    | Some a23 ->
+                                                                    | Some a39 ->
                                                                     Some
                                                                     (((),
                                                                     (
                                                                     let _,y =
                                                                     let x,_ =
-                                                                    a23
+                                                                    a39
                                                                     in
                                                                     x
                                                                     in
                                                                     y)),
                                                                     (
                                                                     let _,y =
-                                                                    a23
+                                                                    a39
                                                                     in
                                                                     y))
                                                                     | None ->
@@ -7086,21 +9076,21 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
                                                                     (
                                                                     let _,y =
                                                                     let x,_ =
-                                                                    a21
+                                                                    a37
                                                                     in
                                                                     x
                                                                     in
                                                                     y)
                                                                     (
                                                                     let _,y =
-                                                                    a21
+                                                                    a37
                                                                     in
                                                                     y) with
-                                                              | Some a22 ->
-                                                                let a23 =
+                                                              | Some a38 ->
+                                                                let a39 =
                                                                   let x,_ =
                                                                     let x,_ =
-                                                                    a22
+                                                                    a38
                                                                     in
                                                                     x
                                                                   in
@@ -7110,16 +9100,375 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
                                                                  listAlignedDecodeM
                                                                    test_cache
                                                                    sz
-                                                                   (fun numBytes ->
-                                                                   getCurrentBytes
-                                                                    test_cache
-                                                                    test_cache_add_nat
+                                                                   (fun numBytes v0 idx15 c0 ->
+                                                                   match 
+                                                                   CstructBytestring.nth_opt
                                                                     numBytes
+                                                                    v0 idx15 with
+                                                                   | Some a40 ->
+                                                                    let a41 =
+                                                                    (a40,(Pervasives.succ
+                                                                    idx15)),
+                                                                    (test_cache_add_nat.addD
+                                                                    c0
                                                                     (Pervasives.succ
                                                                     (Pervasives.succ
                                                                     (Pervasives.succ
                                                                     (Pervasives.succ
-                                                                    0)))))
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    in
+                                                                    let idx16 =
+                                                                    let _,y =
+                                                                    let x,_ =
+                                                                    a41
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    y
+                                                                    in
+                                                                    (
+                                                                    match 
+                                                                    match 
+                                                                    CstructBytestring.nth_opt
+                                                                    numBytes
+                                                                    v0 idx16 with
+                                                                    | Some a42 ->
+                                                                    let a43 =
+                                                                    (a42,(Pervasives.succ
+                                                                    idx16)),
+                                                                    (test_cache_add_nat.addD
+                                                                    (
+                                                                    let _,y =
+                                                                    a41
+                                                                    in
+                                                                    y)
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    in
+                                                                    let idx17 =
+                                                                    let _,y =
+                                                                    let x,_ =
+                                                                    a43
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    y
+                                                                    in
+                                                                    (
+                                                                    match 
+                                                                    match 
+                                                                    CstructBytestring.nth_opt
+                                                                    numBytes
+                                                                    v0 idx17 with
+                                                                    | Some a44 ->
+                                                                    let a45 =
+                                                                    (a44,(Pervasives.succ
+                                                                    idx17)),
+                                                                    (test_cache_add_nat.addD
+                                                                    (
+                                                                    let _,y =
+                                                                    a43
+                                                                    in
+                                                                    y)
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    in
+                                                                    let idx18 =
+                                                                    let _,y =
+                                                                    let x,_ =
+                                                                    a45
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    y
+                                                                    in
+                                                                    (
+                                                                    match 
+                                                                    match 
+                                                                    CstructBytestring.nth_opt
+                                                                    numBytes
+                                                                    v0 idx18 with
+                                                                    | Some a46 ->
+                                                                    let a47 =
+                                                                    (a46,(Pervasives.succ
+                                                                    idx18)),
+                                                                    (test_cache_add_nat.addD
+                                                                    (
+                                                                    let _,y =
+                                                                    a45
+                                                                    in
+                                                                    y)
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    in
+                                                                    let a48 =
+                                                                    ((Int64Word.w0),
+                                                                    (
+                                                                    let _,y =
+                                                                    let x,_ =
+                                                                    a47
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    y)),
+                                                                    (
+                                                                    let _,y =
+                                                                    a47
+                                                                    in
+                                                                    y)
+                                                                    in
+                                                                    Some
+                                                                    ((
+                                                                    (Int64Word.append
+                                                                    (mul 0
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0))))))))
+                                                                    (
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a48
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x)
+                                                                    (
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a47
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x)),
+                                                                    (
+                                                                    let _,y =
+                                                                    let x,_ =
+                                                                    a48
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    y)),
+                                                                    (
+                                                                    let _,y =
+                                                                    a48
+                                                                    in
+                                                                    y))
+                                                                    | None ->
+                                                                    None with
+                                                                    | Some a46 ->
+                                                                    Some
+                                                                    (((Int64Word.append
+                                                                    (mul
+                                                                    (Pervasives.succ
+                                                                    0)
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0))))))))
+                                                                    (
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a46
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x)
+                                                                    (
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a45
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x)),
+                                                                    (
+                                                                    let _,y =
+                                                                    let x,_ =
+                                                                    a46
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    y)),
+                                                                    (
+                                                                    let _,y =
+                                                                    a46
+                                                                    in
+                                                                    y))
+                                                                    | None ->
+                                                                    None)
+                                                                    | None ->
+                                                                    None with
+                                                                    | Some a44 ->
+                                                                    Some
+                                                                    (((Int64Word.append
+                                                                    (mul
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0))
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0))))))))
+                                                                    (
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a44
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x)
+                                                                    (
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a43
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x)),
+                                                                    (
+                                                                    let _,y =
+                                                                    let x,_ =
+                                                                    a44
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    y)),
+                                                                    (
+                                                                    let _,y =
+                                                                    a44
+                                                                    in
+                                                                    y))
+                                                                    | None ->
+                                                                    None)
+                                                                    | None ->
+                                                                    None with
+                                                                    | Some a42 ->
+                                                                    Some
+                                                                    (((Int64Word.append
+                                                                    (mul
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0)))))))))
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    (Pervasives.succ
+                                                                    0))))))))
+                                                                    (
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a42
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x)
+                                                                    (
+                                                                    let x,_ =
+                                                                    let x,_ =
+                                                                    a41
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    x)),
+                                                                    (
+                                                                    let _,y =
+                                                                    let x,_ =
+                                                                    a42
+                                                                    in
+                                                                    x
+                                                                    in
+                                                                    y)),
+                                                                    (
+                                                                    let _,y =
+                                                                    a42
+                                                                    in
+                                                                    y))
+                                                                    | None ->
+                                                                    None)
+                                                                   | None ->
+                                                                    None)
                                                                    (sub
                                                                     (Int64Word.wordToNat
                                                                     (Pervasives.succ
@@ -7159,27 +9508,27 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
                                                                     0)))))) v
                                                                    (let _,y =
                                                                     let x,_ =
-                                                                    a22
+                                                                    a38
                                                                     in
                                                                     x
                                                                     in
                                                                     y)
                                                                    (let _,y =
-                                                                    a22
+                                                                    a38
                                                                     in
                                                                     y) with
-                                                                 | Some a24 ->
+                                                                 | Some a40 ->
                                                                    let l =
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a24
+                                                                    a40
                                                                     in
                                                                     x
                                                                     in
                                                                     x
                                                                    in
                                                                    (match 
-                                                                    charListAlignedDecodeM
+                                                                    byteBufferAlignedDecodeM
                                                                     test_cache
                                                                     test_cache_add_nat
                                                                     sz
@@ -7272,30 +9621,30 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
                                                                     (
                                                                     let _,y =
                                                                     let x,_ =
-                                                                    a24
+                                                                    a40
                                                                     in
                                                                     x
                                                                     in
                                                                     y)
                                                                     (
                                                                     let _,y =
-                                                                    a24
+                                                                    a40
                                                                     in
                                                                     y) with
-                                                                    | Some a25 ->
-                                                                    let l0 =
+                                                                    | Some a41 ->
+                                                                    let b1 =
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a25
+                                                                    a41
                                                                     in
                                                                     x
                                                                     in
                                                                     x
                                                                     in
-                                                                    let idx0 =
+                                                                    let idx15 =
                                                                     let _,y =
                                                                     let x,_ =
-                                                                    a25
+                                                                    a41
                                                                     in
                                                                     x
                                                                     in
@@ -7303,7 +9652,7 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
                                                                     in
                                                                     let c0 =
                                                                     let _,y =
-                                                                    a25
+                                                                    a41
                                                                     in
                                                                     y
                                                                     in
@@ -7378,8 +9727,8 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
                                                                     (Pervasives.succ
                                                                     0))))
                                                                     (length l)))
-                                                                    (length
-                                                                    l0))))
+                                                                    (projT1
+                                                                    b1))))
                                                                     ((fun fO fS n -> if n=0 then fO () else fS (n-1))
                                                                     (fun _ ->
                                                                     false)
@@ -7438,7 +9787,7 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
                                                                     (Pervasives.succ
                                                                     0) b))))))
                                                                     (eqb
-                                                                    (match a23 with
+                                                                    (match a39 with
                                                                     | Some _ ->
                                                                     true
                                                                     | None ->
@@ -7490,7 +9839,7 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
                                                                     (
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a1
+                                                                    a3
                                                                     in
                                                                     x
                                                                     in
@@ -7499,7 +9848,7 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
                                                                     (
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a4
+                                                                    a8
                                                                     in
                                                                     x
                                                                     in
@@ -7508,7 +9857,7 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
                                                                     (
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a9
+                                                                    a17
                                                                     in
                                                                     x
                                                                     in
@@ -7517,7 +9866,7 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
                                                                     (
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a14
+                                                                    a26
                                                                     in
                                                                     x
                                                                     in
@@ -7750,17 +10099,17 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
                                                                     (
                                                                     let x,_ =
                                                                     let x,_ =
-                                                                    a19
+                                                                    a35
                                                                     in
                                                                     x
                                                                     in
                                                                     x);
                                                                     urgentPointer =
-                                                                    a23;
+                                                                    a39;
                                                                     options0 =
                                                                     l;
                                                                     payload =
-                                                                    l0 },idx0),c0))
+                                                                    b1 },idx15),c0))
                                                                     else 
                                                                     Obj.magic
                                                                     None
@@ -7795,7 +10144,8 @@ let tCP_decoder_impl srcAddr destAddr tcpLength sz v =
   else Obj.magic None
 
 type uDP_Packet = { sourcePort0 : Int64Word.t; destPort0 : Int64Word.t;
-                    payload0 : Int64Word.t list }
+                    payload0 : (OCamlNativeInt.t,
+                               CstructBytestring.storage_t) sigT }
 
 (** val sourcePort0 : uDP_Packet -> Int64Word.t **)
 
@@ -7805,88 +10155,181 @@ let sourcePort0 x = x.sourcePort0
 
 let destPort0 x = x.destPort0
 
-(** val payload0 : uDP_Packet -> Int64Word.t list **)
+(** val payload0 :
+    uDP_Packet -> (OCamlNativeInt.t, CstructBytestring.storage_t) sigT **)
 
 let payload0 x = x.payload0
 
 (** val uDP_encoder_impl :
-    Int64Word.t ArrayVector.storage_t -> Int64Word.t ArrayVector.storage_t ->
-    Int64Word.t -> uDP_Packet -> OCamlNativeInt.t -> char
-    ArrayVector.storage_t -> ((char
-    ArrayVector.storage_t*OCamlNativeInt.t)*cacheFormat) option **)
+    CstructBytestring.storage_t -> CstructBytestring.storage_t -> Int64Word.t
+    -> uDP_Packet -> OCamlNativeInt.t -> CstructBytestring.storage_t ->
+    ((CstructBytestring.storage_t*OCamlNativeInt.t)*cacheFormat) option **)
 
 let uDP_encoder_impl srcAddr destAddr udpLength r sz v =
-  match match setCurrentBytes test_cache test_cache_add_nat sz
-                (Pervasives.succ (Pervasives.succ 0)) v 0 r.sourcePort0
-                (Obj.magic ()) with
-        | Some a ->
-          (match setCurrentBytes test_cache test_cache_add_nat sz
-                   (Pervasives.succ (Pervasives.succ 0))
-                   (let x,_ = let x,_ = a in x in x)
-                   (let _,y = let x,_ = a in x in y) r.destPort0
-                   (let _,y = a in y) with
-           | Some a0 ->
-             setCurrentBytes test_cache test_cache_add_nat sz
-               (Pervasives.succ (Pervasives.succ 0))
-               (let x,_ = let x,_ = a0 in x in x)
-               (let _,y = let x,_ = a0 in x in y)
-               (Int64Word.natToWord (Pervasives.succ (Pervasives.succ
-                 (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                 (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                 (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                 (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                 (Pervasives.succ (Pervasives.succ 0))))))))))))))))
-                 (add (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                   (Pervasives.succ (Pervasives.succ 0))))))))
-                   (length r.payload0))) (let _,y = a0 in y)
-           | None -> None)
-        | None -> None with
-  | Some a ->
-    (match setCurrentByte test_cache test_cache_add_nat sz
-             (let x,_ = let x,_ = a in x in x)
-             (let _,y = let x,_ = a in x in y)
-             (Int64Word.wzero (Pervasives.succ (Pervasives.succ
-               (Pervasives.succ (Pervasives.succ (Pervasives.succ
-               (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))))))
-             (let _,y = a in y) with
-     | Some a0 ->
-       (match setCurrentByte test_cache test_cache_add_nat sz
+  match let idx = 0 in
+        (match let w = r.sourcePort0 in
+               if Nat.ltb idx sz
+               then let a =
+                      ((CstructBytestring.set_nth sz v idx
+                         (Int64Word.split1' (Pervasives.succ (Pervasives.succ
+                           (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                           (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                           0))))))))
+                           (mul (Pervasives.succ 0) (Pervasives.succ
+                             (Pervasives.succ (Pervasives.succ
+                             (Pervasives.succ (Pervasives.succ
+                             (Pervasives.succ (Pervasives.succ
+                             (Pervasives.succ 0))))))))) w)),(Pervasives.succ
+                      idx)),(test_cache_add_nat.addE (Obj.magic ())
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ 0)))))))))
+                    in
+                    let idx0 = let _,y = let x,_ = a in x in y in
+                    let ce = let _,y = a in y in
+                    if Nat.ltb idx0 sz
+                    then Some
+                           (((CstructBytestring.set_nth sz
+                               (let x,_ = let x,_ = a in x in x) idx0
+                               (Int64Word.split2' (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ 0))))))))
+                                 (mul (Pervasives.succ 0) (Pervasives.succ
+                                   (Pervasives.succ (Pervasives.succ
+                                   (Pervasives.succ (Pervasives.succ
+                                   (Pervasives.succ (Pervasives.succ
+                                   (Pervasives.succ 0))))))))) w)),(Pervasives.succ
+                           idx0)),(test_cache_add_nat.addE ce
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    0))))))))))
+                    else None
+               else None with
+         | Some a ->
+           let idx0 = let _,y = let x,_ = a in x in y in
+           (match let w = r.destPort0 in
+                  if Nat.ltb idx0 sz
+                  then let a0 =
+                         ((CstructBytestring.set_nth sz
+                            (let x,_ = let x,_ = a in x in x) idx0
+                            (Int64Word.split1' (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ 0))))))))
+                              (mul (Pervasives.succ 0) (Pervasives.succ
+                                (Pervasives.succ (Pervasives.succ
+                                (Pervasives.succ (Pervasives.succ
+                                (Pervasives.succ (Pervasives.succ
+                                (Pervasives.succ 0))))))))) w)),(Pervasives.succ
+                         idx0)),(test_cache_add_nat.addE (let _,y = a in y)
+                                  (Pervasives.succ (Pervasives.succ
+                                  (Pervasives.succ (Pervasives.succ
+                                  (Pervasives.succ (Pervasives.succ
+                                  (Pervasives.succ (Pervasives.succ 0)))))))))
+                       in
+                       let idx1 = let _,y = let x,_ = a0 in x in y in
+                       let ce = let _,y = a0 in y in
+                       if Nat.ltb idx1 sz
+                       then Some
+                              (((CstructBytestring.set_nth sz
+                                  (let x,_ = let x,_ = a0 in x in x) idx1
+                                  (Int64Word.split2' (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ 0))))))))
+                                    (mul (Pervasives.succ 0) (Pervasives.succ
+                                      (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ (Pervasives.succ
+                                      (Pervasives.succ 0))))))))) w)),(Pervasives.succ
+                              idx1)),(test_cache_add_nat.addE ce
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       (Pervasives.succ (Pervasives.succ
+                                       0))))))))))
+                       else None
+                  else None with
+            | Some a0 ->
+              setCurrentBytes test_cache test_cache_add_nat sz
+                (Pervasives.succ (Pervasives.succ 0))
                 (let x,_ = let x,_ = a0 in x in x)
                 (let _,y = let x,_ = a0 in x in y)
-                (Int64Word.wzero (Pervasives.succ (Pervasives.succ
+                (Int64Word.natToWord (Pervasives.succ (Pervasives.succ
                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                  0))))))))) (let _,y = a0 in y) with
-        | Some a1 ->
-          (match alignedEncodeList test_cache
-                   (setCurrentByte test_cache test_cache_add_nat) sz
-                   (let x,_ = let x,_ = a1 in x in x)
-                   (let _,y = let x,_ = a1 in x in y) r.payload0
-                   (let _,y = a1 in y) with
-           | Some a2 ->
-             calculate_PseudoChecksum sz srcAddr destAddr udpLength
-               (Int64Word.natToWord (Pervasives.succ (Pervasives.succ
-                 (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                 (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))))
-                 (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                 (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                 (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                 (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                 (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                 (Pervasives.succ (Pervasives.succ 0))))))))))))))))))
-               (Pervasives.succ (Pervasives.succ (Pervasives.succ
-               (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))))))
-               (let x,_ = let x,_ = a2 in x in x)
-               (let _,y = let x,_ = a2 in x in y) r (let _,y = a2 in y)
-           | None -> None)
-        | None -> None)
-     | None -> None)
+                  (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                  (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                  (Pervasives.succ (Pervasives.succ 0))))))))))))))))
+                  (add (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                    (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                    (Pervasives.succ (Pervasives.succ 0))))))))
+                    (projT1 r.payload0))) (let _,y = a0 in y)
+            | None -> None)
+         | None -> None) with
+  | Some a ->
+    let idx = let _,y = let x,_ = a in x in y in
+    if Nat.ltb idx sz
+    then let a0 =
+           ((CstructBytestring.set_nth sz (let x,_ = let x,_ = a in x in x)
+              idx
+              (Int64Word.wzero (Pervasives.succ (Pervasives.succ
+                (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))))))))),(Pervasives.succ
+           idx)),(test_cache_add_nat.addE (let _,y = a in y) (Pervasives.succ
+                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                   (Pervasives.succ 0)))))))))
+         in
+         let idx0 = let _,y = let x,_ = a0 in x in y in
+         if Nat.ltb idx0 sz
+         then let a1 =
+                ((CstructBytestring.set_nth sz
+                   (let x,_ = let x,_ = a0 in x in x) idx0
+                   (Int64Word.wzero (Pervasives.succ (Pervasives.succ
+                     (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                     (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                     0)))))))))),(Pervasives.succ
+                idx0)),(test_cache_add_nat.addE (let _,y = a0 in y)
+                         (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                         (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                         (Pervasives.succ (Pervasives.succ 0)))))))))
+              in
+              (match alignedEncodeByteBuffer test_cache test_cache_add_nat sz
+                       (let x,_ = let x,_ = a1 in x in x)
+                       (let _,y = let x,_ = a1 in x in y) r.payload0
+                       (let _,y = a1 in y) with
+               | Some a2 ->
+                 calculate_PseudoChecksum sz srcAddr destAddr udpLength
+                   (Int64Word.natToWord (Pervasives.succ (Pervasives.succ
+                     (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                     (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                     0)))))))) (Pervasives.succ (Pervasives.succ
+                     (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                     (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                     (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                     (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                     (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                     0)))))))))))))))))) (Pervasives.succ (Pervasives.succ
+                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                   (Pervasives.succ 0))))))
+                   (let x,_ = let x,_ = a2 in x in x)
+                   (let _,y = let x,_ = a2 in x in y) r (let _,y = a2 in y)
+               | None -> None)
+         else None
+    else None
   | None -> None
 
 (** val uDP_decoder_impl :
-    Int64Word.t ArrayVector.storage_t -> Int64Word.t ArrayVector.storage_t ->
-    Int64Word.t -> OCamlNativeInt.t -> char ArrayVector.storage_t ->
+    CstructBytestring.storage_t -> CstructBytestring.storage_t -> Int64Word.t
+    -> OCamlNativeInt.t -> CstructBytestring.storage_t ->
     ((uDP_Packet*OCamlNativeInt.t)*unit) option **)
 
 let uDP_decoder_impl srcAddr destAddr udpLength sz v =
@@ -7947,56 +10390,93 @@ let uDP_decoder_impl srcAddr destAddr udpLength sz v =
        (Int64Word.w0)))))))))))))))))))))))))))))))))
   then let idx = Obj.magic 0 in
        let c = Obj.magic () in
-       (match getCurrentByte test_cache test_cache_add_nat sz v idx c with
+       (match CstructBytestring.nth_opt sz v idx with
         | Some a ->
-          (match getCurrentByte test_cache test_cache_add_nat sz v
-                   (let _,y = let x,_ = a in x in y) (let _,y = a in y) with
-           | Some a0 ->
-             let a1 =
+          let a0 = (a,(Pervasives.succ
+            idx)),(test_cache_add_nat.addD c (Pervasives.succ
+                    (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                    (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                    (Pervasives.succ 0)))))))))
+          in
+          let idx0 = let _,y = let x,_ = a0 in x in y in
+          (match CstructBytestring.nth_opt sz v idx0 with
+           | Some a1 ->
+             let a2 = (a1,(Pervasives.succ
+               idx0)),(test_cache_add_nat.addD (let _,y = a0 in y)
+                        (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                        (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                        (Pervasives.succ (Pervasives.succ 0)))))))))
+             in
+             let a3 =
                ((Int64Word.append (Pervasives.succ (Pervasives.succ
                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
                   0)))))))) (Pervasives.succ (Pervasives.succ
                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
                   (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                  0)))))))) (let x,_ = let x,_ = a0 in x in x)
-                  (let x,_ = let x,_ = a in x in x)),(let _,y =
-                                                        let x,_ = a0 in x
-                                                      in
-                                                      y)),(let _,y = a0 in y)
+                  0)))))))) (let x,_ = let x,_ = a2 in x in x)
+                  (let x,_ = let x,_ = a0 in x in x)),(let _,y =
+                                                         let x,_ = a2 in x
+                                                       in
+                                                       y)),(let _,y = a2 in y)
              in
-             (match getCurrentByte test_cache test_cache_add_nat sz v
-                      (let _,y = let x,_ = a1 in x in y) (let _,y = a1 in y) with
-              | Some a2 ->
-                (match getCurrentByte test_cache test_cache_add_nat sz v
-                         (let _,y = let x,_ = a2 in x in y)
-                         (let _,y = a2 in y) with
-                 | Some a3 ->
-                   let a4 =
+             let idx1 = let _,y = let x,_ = a3 in x in y in
+             (match CstructBytestring.nth_opt sz v idx1 with
+              | Some a4 ->
+                let a5 = (a4,(Pervasives.succ
+                  idx1)),(test_cache_add_nat.addD (let _,y = a3 in y)
+                           (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                           (Pervasives.succ (Pervasives.succ (Pervasives.succ
+                           (Pervasives.succ (Pervasives.succ 0)))))))))
+                in
+                let idx2 = let _,y = let x,_ = a5 in x in y in
+                (match CstructBytestring.nth_opt sz v idx2 with
+                 | Some a6 ->
+                   let a7 = (a6,(Pervasives.succ
+                     idx2)),(test_cache_add_nat.addD (let _,y = a5 in y)
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ
+                              (Pervasives.succ (Pervasives.succ 0)))))))))
+                   in
+                   let a8 =
                      ((Int64Word.append (Pervasives.succ (Pervasives.succ
                         (Pervasives.succ (Pervasives.succ (Pervasives.succ
                         (Pervasives.succ (Pervasives.succ (Pervasives.succ
                         0)))))))) (Pervasives.succ (Pervasives.succ
                         (Pervasives.succ (Pervasives.succ (Pervasives.succ
                         (Pervasives.succ (Pervasives.succ (Pervasives.succ
-                        0)))))))) (let x,_ = let x,_ = a3 in x in x)
-                        (let x,_ = let x,_ = a2 in x in x)),(let _,y =
-                                                               let x,_ = a3 in
+                        0)))))))) (let x,_ = let x,_ = a7 in x in x)
+                        (let x,_ = let x,_ = a5 in x in x)),(let _,y =
+                                                               let x,_ = a7 in
                                                                x
                                                              in
-                                                             y)),(let _,y = a3
+                                                             y)),(let _,y = a7
                                                                   in
                                                                   y)
                    in
-                   (match getCurrentByte test_cache test_cache_add_nat sz v
-                            (let _,y = let x,_ = a4 in x in y)
-                            (let _,y = a4 in y) with
-                    | Some a5 ->
-                      (match getCurrentByte test_cache test_cache_add_nat sz
-                               v (let _,y = let x,_ = a5 in x in y)
-                               (let _,y = a5 in y) with
-                       | Some a6 ->
-                         let a7 =
+                   let idx3 = let _,y = let x,_ = a8 in x in y in
+                   (match CstructBytestring.nth_opt sz v idx3 with
+                    | Some a9 ->
+                      let a10 = (a9,(Pervasives.succ
+                        idx3)),(test_cache_add_nat.addD (let _,y = a8 in y)
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ
+                                 (Pervasives.succ (Pervasives.succ 0)))))))))
+                      in
+                      let idx4 = let _,y = let x,_ = a10 in x in y in
+                      (match CstructBytestring.nth_opt sz v idx4 with
+                       | Some a11 ->
+                         let a12 = (a11,(Pervasives.succ
+                           idx4)),(test_cache_add_nat.addD
+                                    (let _,y = a10 in y) (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ (Pervasives.succ
+                                    (Pervasives.succ 0)))))))))
+                         in
+                         let a13 =
                            ((Int64Word.append (Pervasives.succ
                               (Pervasives.succ (Pervasives.succ
                               (Pervasives.succ (Pervasives.succ
@@ -8006,30 +10486,28 @@ let uDP_decoder_impl srcAddr destAddr udpLength sz v =
                               (Pervasives.succ (Pervasives.succ
                               (Pervasives.succ (Pervasives.succ
                               (Pervasives.succ 0))))))))
-                              (let x,_ = let x,_ = a6 in x in x)
-                              (let x,_ = let x,_ = a5 in x in x)),(let _,y =
+                              (let x,_ = let x,_ = a12 in x in x)
+                              (let x,_ = let x,_ = a10 in x in x)),(let _,y =
                                                                     let x,_ =
-                                                                    a6
+                                                                    a12
                                                                     in
                                                                     x
-                                                                   in
-                                                                   y)),
-                           (let _,y = a6 in y)
+                                                                    in
+                                                                    y)),
+                           (let _,y = a12 in y)
                          in
-                         let w = let x,_ = let x,_ = a7 in x in x in
+                         let w = let x,_ = let x,_ = a13 in x in x in
                          (match skipCurrentByte test_cache test_cache_add_nat
-                                  sz v (let _,y = let x,_ = a7 in x in y)
-                                  (let _,y = a7 in y) with
-                          | Some a8 ->
+                                  sz v (let _,y = let x,_ = a13 in x in y)
+                                  (let _,y = a13 in y) with
+                          | Some a14 ->
                             (match skipCurrentByte test_cache
                                      test_cache_add_nat sz v
-                                     (let _,y = let x,_ = a8 in x in y)
-                                     (let _,y = a8 in y) with
-                             | Some a9 ->
-                               (match listAlignedDecodeM test_cache sz
-                                        (fun numBytes ->
-                                        getCurrentByte test_cache
-                                          test_cache_add_nat numBytes)
+                                     (let _,y = let x,_ = a14 in x in y)
+                                     (let _,y = a14 in y) with
+                             | Some a15 ->
+                               (match byteBufferAlignedDecodeM test_cache
+                                        test_cache_add_nat sz
                                         (sub
                                           (Int64Word.wordToNat
                                             (Pervasives.succ (Pervasives.succ
@@ -8046,15 +10524,15 @@ let uDP_decoder_impl srcAddr destAddr udpLength sz v =
                                           (Pervasives.succ (Pervasives.succ
                                           (Pervasives.succ (Pervasives.succ
                                           0))))))))) v
-                                        (let _,y = let x,_ = a9 in x in y)
-                                        (let _,y = a9 in y) with
-                                | Some a10 ->
-                                  let l = let x,_ = let x,_ = a10 in x in x in
-                                  let idx0 = let _,y = let x,_ = a10 in x in y
+                                        (let _,y = let x,_ = a15 in x in y)
+                                        (let _,y = a15 in y) with
+                                | Some a16 ->
+                                  let b = let x,_ = let x,_ = a16 in x in x in
+                                  let idx5 = let _,y = let x,_ = a16 in x in y
                                   in
-                                  let c0 = let _,y = a10 in y in
+                                  let c0 = let _,y = a16 in y in
                                   if (&&)
-                                       (if (<) (length l)
+                                       (if (<) (projT1 b)
                                              (sub
                                                (pow2 (Pervasives.succ
                                                  (Pervasives.succ
@@ -8110,7 +10588,7 @@ let uDP_decoder_impl srcAddr destAddr udpLength sz v =
                                                         (fun _ ->
                                                         false)
                                                         (fun m'6 ->
-                                                        (=) (length l) m'6)
+                                                        (=) (projT1 b) m'6)
                                                         m'5)
                                                       m'4)
                                                     m'3)
@@ -8129,10 +10607,10 @@ let uDP_decoder_impl srcAddr destAddr udpLength sz v =
                                             (Pervasives.succ (Pervasives.succ
                                             0)))))))))))))))) w))
                                   then Obj.magic (Some (({ sourcePort0 =
-                                         (let x,_ = let x,_ = a1 in x in x);
+                                         (let x,_ = let x,_ = a3 in x in x);
                                          destPort0 =
-                                         (let x,_ = let x,_ = a4 in x in x);
-                                         payload0 = l },idx0),c0))
+                                         (let x,_ = let x,_ = a8 in x in x);
+                                         payload0 = b },idx5),c0))
                                   else Obj.magic None
                                 | None -> Obj.magic None)
                              | None -> Obj.magic None)
@@ -8146,109 +10624,101 @@ let uDP_decoder_impl srcAddr destAddr udpLength sz v =
   else Obj.magic None
 
 (** val injectEnum :
-    OCamlNativeInt.t -> 'a1 ArrayVector.storage_t -> ArrayVector.idx_t -> 'a1 **)
+    OCamlNativeInt.t -> 'a1 StackVector.t -> ArrayVector.idx_t -> 'a1 **)
 
 let injectEnum =
-  ArrayVector.nth
+  StackVector.nth
 
 (** val wrapDecoder :
-    OCamlNativeInt.t -> (OCamlNativeInt.t -> Int64Word.t
-    ArrayVector.storage_t -> (('a1*OCamlNativeInt.t)*'a2) option) ->
-    Int64Word.t ArrayVector.storage_t -> 'a1 option **)
+    OCamlNativeInt.t -> (OCamlNativeInt.t -> CstructBytestring.storage_t ->
+    (('a1*OCamlNativeInt.t)*'a2) option) -> CstructBytestring.storage_t ->
+    'a1 option **)
 
 let wrapDecoder sz impl bs =
   match impl sz bs with
-  | Some p -> let p0,_ = p in let pkt0,_ = p0 in Some pkt0
+  | Some p -> let p0,_ = p in let pkt,_ = p0 in Some pkt
   | None -> None
 
 (** val wrapEncoder :
-    OCamlNativeInt.t -> (OCamlNativeInt.t -> Int64Word.t
-    ArrayVector.storage_t -> 'a1 -> ((Int64Word.t
-    ArrayVector.storage_t*OCamlNativeInt.t)*'a2) option) -> 'a1 ->
-    Int64Word.t ArrayVector.storage_t -> Int64Word.t ArrayVector.storage_t
-    option **)
+    OCamlNativeInt.t -> (OCamlNativeInt.t -> CstructBytestring.storage_t ->
+    'a1 -> ((CstructBytestring.storage_t*OCamlNativeInt.t)*'a2) option) ->
+    'a1 -> CstructBytestring.storage_t -> CstructBytestring.storage_t option **)
 
-let wrapEncoder sz impl pkt0 out =
-  match impl sz out pkt0 with
+let wrapEncoder sz impl pkt out =
+  match impl sz out pkt with
   | Some p -> let p0,_ = p in let out0,_ = p0 in Some out0
   | None -> None
 
-(** val makeBuffer : OCamlNativeInt.t -> Int64Word.t ArrayVector.storage_t **)
-
-let makeBuffer =
-  initialize_Aligned_ByteString
-
 (** val fiat_ethernet_encode :
-    OCamlNativeInt.t -> ethernetHeader -> Int64Word.t ArrayVector.storage_t
-    -> Int64Word.t ArrayVector.storage_t option **)
+    OCamlNativeInt.t -> ethernetHeader -> CstructBytestring.storage_t ->
+    CstructBytestring.storage_t option **)
 
 let fiat_ethernet_encode sz =
-  wrapEncoder sz (fun sz0 v pkt0 -> ethernetHeader_encoder_impl pkt0 sz0 v)
+  wrapEncoder sz (fun sz0 v pkt -> ethernetHeader_encoder_impl pkt sz0 v)
 
 (** val fiat_ethernet_decode :
-    OCamlNativeInt.t -> Int64Word.t ArrayVector.storage_t -> OCamlNativeInt.t
-    -> ethernetHeader option **)
+    OCamlNativeInt.t -> CstructBytestring.storage_t -> OCamlNativeInt.t ->
+    ethernetHeader option **)
 
 let fiat_ethernet_decode sz v packet_length =
   wrapDecoder sz (ethernet_decoder_impl packet_length) v
 
 (** val fiat_arp_decode :
-    OCamlNativeInt.t -> Int64Word.t ArrayVector.storage_t -> aRPPacket option **)
+    OCamlNativeInt.t -> CstructBytestring.storage_t -> aRPPacket option **)
 
 let fiat_arp_decode sz =
   wrapDecoder sz aRP_decoder_impl
 
 (** val fiat_arp_encode :
-    OCamlNativeInt.t -> aRPPacket -> Int64Word.t ArrayVector.storage_t ->
-    Int64Word.t ArrayVector.storage_t option **)
+    OCamlNativeInt.t -> aRPPacket -> CstructBytestring.storage_t ->
+    CstructBytestring.storage_t option **)
 
 let fiat_arp_encode sz =
   wrapEncoder sz aRP_encoder_impl
 
 (** val fiat_ipv4_decode :
-    OCamlNativeInt.t -> Int64Word.t ArrayVector.storage_t -> iPv4_Packet
-    option **)
+    OCamlNativeInt.t -> CstructBytestring.storage_t -> iPv4_Packet option **)
 
 let fiat_ipv4_decode sz =
   wrapDecoder sz iPv4_decoder_impl
 
 (** val fiat_ipv4_encode :
-    OCamlNativeInt.t -> iPv4_Packet -> Int64Word.t ArrayVector.storage_t ->
-    Int64Word.t ArrayVector.storage_t option **)
+    OCamlNativeInt.t -> iPv4_Packet -> CstructBytestring.storage_t ->
+    CstructBytestring.storage_t option **)
 
 let fiat_ipv4_encode sz =
   wrapEncoder sz iPv4_encoder_impl
 
 (** val fiat_tcp_encode :
-    OCamlNativeInt.t -> tCP_Packet -> Int64Word.t ArrayVector.storage_t ->
-    Int64Word.t ArrayVector.storage_t -> Int64Word.t -> Int64Word.t
-    ArrayVector.storage_t -> Int64Word.t ArrayVector.storage_t option **)
+    OCamlNativeInt.t -> tCP_Packet -> CstructBytestring.storage_t ->
+    CstructBytestring.storage_t -> Int64Word.t -> CstructBytestring.storage_t
+    -> CstructBytestring.storage_t option **)
 
 let fiat_tcp_encode sz v srcAddress dstAddress tcpLength =
-  wrapEncoder sz (fun sz0 v0 pkt0 ->
-    tCP_encoder_impl srcAddress dstAddress tcpLength pkt0 sz0 v0) v
+  wrapEncoder sz (fun sz0 v0 pkt ->
+    tCP_encoder_impl srcAddress dstAddress tcpLength pkt sz0 v0) v
 
 (** val fiat_tcp_decode :
-    OCamlNativeInt.t -> Int64Word.t ArrayVector.storage_t -> Int64Word.t
-    ArrayVector.storage_t -> Int64Word.t ArrayVector.storage_t -> Int64Word.t
-    -> tCP_Packet option **)
+    OCamlNativeInt.t -> CstructBytestring.storage_t -> Int64Word.t
+    StackVector.t -> Int64Word.t StackVector.t -> Int64Word.t -> tCP_Packet
+    option **)
 
 let fiat_tcp_decode sz v srcAddress dstAddress tcpLength =
   wrapDecoder sz (tCP_decoder_impl srcAddress dstAddress tcpLength) v
 
 (** val fiat_udp_encode :
-    OCamlNativeInt.t -> uDP_Packet -> Int64Word.t ArrayVector.storage_t ->
-    Int64Word.t ArrayVector.storage_t -> Int64Word.t -> Int64Word.t
-    ArrayVector.storage_t -> Int64Word.t ArrayVector.storage_t option **)
+    OCamlNativeInt.t -> uDP_Packet -> CstructBytestring.storage_t ->
+    CstructBytestring.storage_t -> Int64Word.t -> CstructBytestring.storage_t
+    -> CstructBytestring.storage_t option **)
 
 let fiat_udp_encode sz v srcAddress dstAddress udpLength =
-  wrapEncoder sz (fun sz0 v0 pkt0 ->
-    uDP_encoder_impl srcAddress dstAddress udpLength pkt0 sz0 v0) v
+  wrapEncoder sz (fun sz0 v0 pkt ->
+    uDP_encoder_impl srcAddress dstAddress udpLength pkt sz0 v0) v
 
 (** val fiat_udp_decode :
-    OCamlNativeInt.t -> Int64Word.t ArrayVector.storage_t -> Int64Word.t
-    ArrayVector.storage_t -> Int64Word.t ArrayVector.storage_t -> Int64Word.t
-    -> uDP_Packet option **)
+    OCamlNativeInt.t -> CstructBytestring.storage_t -> Int64Word.t
+    StackVector.t -> Int64Word.t StackVector.t -> Int64Word.t -> uDP_Packet
+    option **)
 
 let fiat_udp_decode sz v srcAddress dstAddress udpLength =
   wrapDecoder sz (uDP_decoder_impl srcAddress dstAddress udpLength) v
@@ -8264,11 +10734,11 @@ type fiat_ethernet_type =
 
 let fiat_ethernet_type_of_enum enum =
   injectEnum (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))) (ArrayVector.cons (ARP, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))), (ArrayVector.cons (IP,
-    (Pervasives.succ (Pervasives.succ 0)), (ArrayVector.cons (IPV6,
-    (Pervasives.succ 0), (ArrayVector.cons (RARP, 0,
-    ArrayVector.empty ())))))))) enum
+    (Pervasives.succ 0)))) (StackVector.cons (ARP, (Pervasives.succ
+    (Pervasives.succ (Pervasives.succ 0))), (StackVector.cons (IP,
+    (Pervasives.succ (Pervasives.succ 0)), (StackVector.cons (IPV6,
+    (Pervasives.succ 0), (StackVector.cons (RARP, 0,
+    StackVector.empty ())))))))) enum
 
 (** val fiat_ethernet_type_to_enum :
     fiat_ethernet_type -> char list enumType **)
@@ -8276,46 +10746,46 @@ let fiat_ethernet_type_of_enum enum =
 let fiat_ethernet_type_to_enum = function
 | ARP ->
   boundedIndex_inj_EnumType (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))) (ArrayVector.cons (('A'::('R'::('P'::[]))),
+    (Pervasives.succ 0))) (StackVector.cons (('A'::('R'::('P'::[]))),
     (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))),
-    (ArrayVector.cons (('I'::('P'::[])), (Pervasives.succ (Pervasives.succ
-    0)), (ArrayVector.cons (('I'::('P'::('V'::('6'::[])))), (Pervasives.succ
-    0), (ArrayVector.cons (('R'::('A'::('R'::('P'::[])))), 0,
-    ArrayVector.empty ())))))))) { bindex = ('A'::('R'::('P'::[]))); indexb =
+    (StackVector.cons (('I'::('P'::[])), (Pervasives.succ (Pervasives.succ
+    0)), (StackVector.cons (('I'::('P'::('V'::('6'::[])))), (Pervasives.succ
+    0), (StackVector.cons (('R'::('A'::('R'::('P'::[])))), 0,
+    StackVector.empty ())))))))) { bindex = ('A'::('R'::('P'::[]))); indexb =
     ((fun _ n p -> n + p) (Pervasives.succ (Pervasives.succ (Pervasives.succ
       (Pervasives.succ 0)))) 0 (ArrayVector.zero (Pervasives.succ
       (Pervasives.succ (Pervasives.succ 0))))) }
 | IP ->
   boundedIndex_inj_EnumType (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))) (ArrayVector.cons (('A'::('R'::('P'::[]))),
+    (Pervasives.succ 0))) (StackVector.cons (('A'::('R'::('P'::[]))),
     (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))),
-    (ArrayVector.cons (('I'::('P'::[])), (Pervasives.succ (Pervasives.succ
-    0)), (ArrayVector.cons (('I'::('P'::('V'::('6'::[])))), (Pervasives.succ
-    0), (ArrayVector.cons (('R'::('A'::('R'::('P'::[])))), 0,
-    ArrayVector.empty ())))))))) { bindex = ('I'::('P'::[])); indexb =
+    (StackVector.cons (('I'::('P'::[])), (Pervasives.succ (Pervasives.succ
+    0)), (StackVector.cons (('I'::('P'::('V'::('6'::[])))), (Pervasives.succ
+    0), (StackVector.cons (('R'::('A'::('R'::('P'::[])))), 0,
+    StackVector.empty ())))))))) { bindex = ('I'::('P'::[])); indexb =
     ((fun _ n p -> n + p) (Pervasives.succ (Pervasives.succ (Pervasives.succ
       0))) (Pervasives.succ 0) (ArrayVector.zero (Pervasives.succ
       (Pervasives.succ 0)))) }
 | IPV6 ->
   boundedIndex_inj_EnumType (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))) (ArrayVector.cons (('A'::('R'::('P'::[]))),
+    (Pervasives.succ 0))) (StackVector.cons (('A'::('R'::('P'::[]))),
     (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))),
-    (ArrayVector.cons (('I'::('P'::[])), (Pervasives.succ (Pervasives.succ
-    0)), (ArrayVector.cons (('I'::('P'::('V'::('6'::[])))), (Pervasives.succ
-    0), (ArrayVector.cons (('R'::('A'::('R'::('P'::[])))), 0,
-    ArrayVector.empty ())))))))) { bindex = ('I'::('P'::('V'::('6'::[]))));
+    (StackVector.cons (('I'::('P'::[])), (Pervasives.succ (Pervasives.succ
+    0)), (StackVector.cons (('I'::('P'::('V'::('6'::[])))), (Pervasives.succ
+    0), (StackVector.cons (('R'::('A'::('R'::('P'::[])))), 0,
+    StackVector.empty ())))))))) { bindex = ('I'::('P'::('V'::('6'::[]))));
     indexb =
     ((fun _ n p -> n + p) (Pervasives.succ (Pervasives.succ 0))
       (Pervasives.succ (Pervasives.succ 0)) (ArrayVector.zero
       (Pervasives.succ 0))) }
 | RARP ->
   boundedIndex_inj_EnumType (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))) (ArrayVector.cons (('A'::('R'::('P'::[]))),
+    (Pervasives.succ 0))) (StackVector.cons (('A'::('R'::('P'::[]))),
     (Pervasives.succ (Pervasives.succ (Pervasives.succ 0))),
-    (ArrayVector.cons (('I'::('P'::[])), (Pervasives.succ (Pervasives.succ
-    0)), (ArrayVector.cons (('I'::('P'::('V'::('6'::[])))), (Pervasives.succ
-    0), (ArrayVector.cons (('R'::('A'::('R'::('P'::[])))), 0,
-    ArrayVector.empty ())))))))) { bindex = ('R'::('A'::('R'::('P'::[]))));
+    (StackVector.cons (('I'::('P'::[])), (Pervasives.succ (Pervasives.succ
+    0)), (StackVector.cons (('I'::('P'::('V'::('6'::[])))), (Pervasives.succ
+    0), (StackVector.cons (('R'::('A'::('R'::('P'::[])))), 0,
+    StackVector.empty ())))))))) { bindex = ('R'::('A'::('R'::('P'::[]))));
     indexb =
     ((fun _ n p -> n + p) (Pervasives.succ 0) (Pervasives.succ
       (Pervasives.succ (Pervasives.succ 0))) (ArrayVector.zero 0)) }
@@ -8330,9 +10800,9 @@ type fiat_arp_hardtype =
 
 let fiat_arp_hardtype_of_enum enum =
   injectEnum (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))
-    (ArrayVector.cons (Ethernet, (Pervasives.succ (Pervasives.succ 0)),
-    (ArrayVector.cons (IEEE802, (Pervasives.succ 0), (ArrayVector.cons
-    (Chaos, 0, ArrayVector.empty ())))))) enum
+    (StackVector.cons (Ethernet, (Pervasives.succ (Pervasives.succ 0)),
+    (StackVector.cons (IEEE802, (Pervasives.succ 0), (StackVector.cons
+    (Chaos, 0, StackVector.empty ())))))) enum
 
 (** val fiat_arp_hardtype_to_enum :
     fiat_arp_hardtype -> char list enumType **)
@@ -8340,34 +10810,34 @@ let fiat_arp_hardtype_of_enum enum =
 let fiat_arp_hardtype_to_enum = function
 | Ethernet ->
   boundedIndex_inj_EnumType (Pervasives.succ (Pervasives.succ 0))
-    (ArrayVector.cons
+    (StackVector.cons
     (('E'::('t'::('h'::('e'::('r'::('n'::('e'::('t'::[])))))))),
-    (Pervasives.succ (Pervasives.succ 0)), (ArrayVector.cons
+    (Pervasives.succ (Pervasives.succ 0)), (StackVector.cons
     (('I'::('E'::('E'::('E'::('8'::('0'::('2'::[]))))))), (Pervasives.succ
-    0), (ArrayVector.cons (('C'::('h'::('a'::('o'::('s'::[]))))), 0,
-    ArrayVector.empty ())))))) { bindex =
+    0), (StackVector.cons (('C'::('h'::('a'::('o'::('s'::[]))))), 0,
+    StackVector.empty ())))))) { bindex =
     ('E'::('t'::('h'::('e'::('r'::('n'::('e'::('t'::[])))))))); indexb =
     ((fun _ n p -> n + p) (Pervasives.succ (Pervasives.succ (Pervasives.succ
       0))) 0 (ArrayVector.zero (Pervasives.succ (Pervasives.succ 0)))) }
 | IEEE802 ->
   boundedIndex_inj_EnumType (Pervasives.succ (Pervasives.succ 0))
-    (ArrayVector.cons
+    (StackVector.cons
     (('E'::('t'::('h'::('e'::('r'::('n'::('e'::('t'::[])))))))),
-    (Pervasives.succ (Pervasives.succ 0)), (ArrayVector.cons
+    (Pervasives.succ (Pervasives.succ 0)), (StackVector.cons
     (('I'::('E'::('E'::('E'::('8'::('0'::('2'::[]))))))), (Pervasives.succ
-    0), (ArrayVector.cons (('C'::('h'::('a'::('o'::('s'::[]))))), 0,
-    ArrayVector.empty ())))))) { bindex =
+    0), (StackVector.cons (('C'::('h'::('a'::('o'::('s'::[]))))), 0,
+    StackVector.empty ())))))) { bindex =
     ('I'::('E'::('E'::('E'::('8'::('0'::('2'::[]))))))); indexb =
     ((fun _ n p -> n + p) (Pervasives.succ (Pervasives.succ 0))
       (Pervasives.succ 0) (ArrayVector.zero (Pervasives.succ 0))) }
 | Chaos ->
   boundedIndex_inj_EnumType (Pervasives.succ (Pervasives.succ 0))
-    (ArrayVector.cons
+    (StackVector.cons
     (('E'::('t'::('h'::('e'::('r'::('n'::('e'::('t'::[])))))))),
-    (Pervasives.succ (Pervasives.succ 0)), (ArrayVector.cons
+    (Pervasives.succ (Pervasives.succ 0)), (StackVector.cons
     (('I'::('E'::('E'::('E'::('8'::('0'::('2'::[]))))))), (Pervasives.succ
-    0), (ArrayVector.cons (('C'::('h'::('a'::('o'::('s'::[]))))), 0,
-    ArrayVector.empty ())))))) { bindex =
+    0), (StackVector.cons (('C'::('h'::('a'::('o'::('s'::[]))))), 0,
+    StackVector.empty ())))))) { bindex =
     ('C'::('h'::('a'::('o'::('s'::[]))))); indexb =
     ((fun _ n p -> n + p) (Pervasives.succ 0) (Pervasives.succ
       (Pervasives.succ 0)) (ArrayVector.zero 0)) }
@@ -8380,8 +10850,8 @@ type fiat_arp_prottype =
     char list enumType -> fiat_arp_prottype **)
 
 let fiat_arp_prottype_of_enum enum =
-  injectEnum (Pervasives.succ (Pervasives.succ 0)) (ArrayVector.cons (IPv4,
-    (Pervasives.succ 0), (ArrayVector.cons (IPv6, 0, ArrayVector.empty ()))))
+  injectEnum (Pervasives.succ (Pervasives.succ 0)) (StackVector.cons (IPv4,
+    (Pervasives.succ 0), (StackVector.cons (IPv6, 0, StackVector.empty ()))))
     enum
 
 (** val fiat_arp_prottype_to_enum :
@@ -8389,16 +10859,16 @@ let fiat_arp_prottype_of_enum enum =
 
 let fiat_arp_prottype_to_enum = function
 | IPv4 ->
-  boundedIndex_inj_EnumType (Pervasives.succ 0) (ArrayVector.cons
-    (('I'::('P'::('v'::('4'::[])))), (Pervasives.succ 0), (ArrayVector.cons
-    (('I'::('P'::('v'::('6'::[])))), 0, ArrayVector.empty ())))) { bindex =
+  boundedIndex_inj_EnumType (Pervasives.succ 0) (StackVector.cons
+    (('I'::('P'::('v'::('4'::[])))), (Pervasives.succ 0), (StackVector.cons
+    (('I'::('P'::('v'::('6'::[])))), 0, StackVector.empty ())))) { bindex =
     ('I'::('P'::('v'::('4'::[])))); indexb =
     ((fun _ n p -> n + p) (Pervasives.succ (Pervasives.succ 0)) 0
       (ArrayVector.zero (Pervasives.succ 0))) }
 | IPv6 ->
-  boundedIndex_inj_EnumType (Pervasives.succ 0) (ArrayVector.cons
-    (('I'::('P'::('v'::('4'::[])))), (Pervasives.succ 0), (ArrayVector.cons
-    (('I'::('P'::('v'::('6'::[])))), 0, ArrayVector.empty ())))) { bindex =
+  boundedIndex_inj_EnumType (Pervasives.succ 0) (StackVector.cons
+    (('I'::('P'::('v'::('4'::[])))), (Pervasives.succ 0), (StackVector.cons
+    (('I'::('P'::('v'::('6'::[])))), 0, StackVector.empty ())))) { bindex =
     ('I'::('P'::('v'::('6'::[])))); indexb =
     ((fun _ n p -> n + p) (Pervasives.succ 0) (Pervasives.succ 0)
       (ArrayVector.zero 0)) }
@@ -8414,11 +10884,11 @@ type fiat_arp_operation =
 
 let fiat_arp_operation_of_enum enum =
   injectEnum (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))) (ArrayVector.cons (Request, (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))), (ArrayVector.cons (Reply,
-    (Pervasives.succ (Pervasives.succ 0)), (ArrayVector.cons (RARPRequest,
-    (Pervasives.succ 0), (ArrayVector.cons (RARPReply, 0,
-    ArrayVector.empty ())))))))) enum
+    (Pervasives.succ 0)))) (StackVector.cons (Request, (Pervasives.succ
+    (Pervasives.succ (Pervasives.succ 0))), (StackVector.cons (Reply,
+    (Pervasives.succ (Pervasives.succ 0)), (StackVector.cons (RARPRequest,
+    (Pervasives.succ 0), (StackVector.cons (RARPReply, 0,
+    StackVector.empty ())))))))) enum
 
 (** val fiat_arp_operation_to_enum :
     fiat_arp_operation -> char list enumType **)
@@ -8426,45 +10896,45 @@ let fiat_arp_operation_of_enum enum =
 let fiat_arp_operation_to_enum = function
 | Request ->
   boundedIndex_inj_EnumType (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))) (ArrayVector.cons
+    (Pervasives.succ 0))) (StackVector.cons
     (('R'::('e'::('q'::('u'::('e'::('s'::('t'::[]))))))), (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))), (ArrayVector.cons
+    (Pervasives.succ (Pervasives.succ 0))), (StackVector.cons
     (('R'::('e'::('p'::('l'::('y'::[]))))), (Pervasives.succ (Pervasives.succ
-    0)), (ArrayVector.cons
+    0)), (StackVector.cons
     (('R'::('A'::('R'::('P'::('R'::('e'::('q'::('u'::('e'::('s'::('t'::[]))))))))))),
-    (Pervasives.succ 0), (ArrayVector.cons
+    (Pervasives.succ 0), (StackVector.cons
     (('R'::('A'::('R'::('P'::('R'::('e'::('p'::('l'::('y'::[]))))))))), 0,
-    ArrayVector.empty ())))))))) { bindex =
+    StackVector.empty ())))))))) { bindex =
     ('R'::('e'::('q'::('u'::('e'::('s'::('t'::[]))))))); indexb =
     ((fun _ n p -> n + p) (Pervasives.succ (Pervasives.succ (Pervasives.succ
       (Pervasives.succ 0)))) 0 (ArrayVector.zero (Pervasives.succ
       (Pervasives.succ (Pervasives.succ 0))))) }
 | Reply ->
   boundedIndex_inj_EnumType (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))) (ArrayVector.cons
+    (Pervasives.succ 0))) (StackVector.cons
     (('R'::('e'::('q'::('u'::('e'::('s'::('t'::[]))))))), (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))), (ArrayVector.cons
+    (Pervasives.succ (Pervasives.succ 0))), (StackVector.cons
     (('R'::('e'::('p'::('l'::('y'::[]))))), (Pervasives.succ (Pervasives.succ
-    0)), (ArrayVector.cons
+    0)), (StackVector.cons
     (('R'::('A'::('R'::('P'::('R'::('e'::('q'::('u'::('e'::('s'::('t'::[]))))))))))),
-    (Pervasives.succ 0), (ArrayVector.cons
+    (Pervasives.succ 0), (StackVector.cons
     (('R'::('A'::('R'::('P'::('R'::('e'::('p'::('l'::('y'::[]))))))))), 0,
-    ArrayVector.empty ())))))))) { bindex =
+    StackVector.empty ())))))))) { bindex =
     ('R'::('e'::('p'::('l'::('y'::[]))))); indexb =
     ((fun _ n p -> n + p) (Pervasives.succ (Pervasives.succ (Pervasives.succ
       0))) (Pervasives.succ 0) (ArrayVector.zero (Pervasives.succ
       (Pervasives.succ 0)))) }
 | RARPRequest ->
   boundedIndex_inj_EnumType (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))) (ArrayVector.cons
+    (Pervasives.succ 0))) (StackVector.cons
     (('R'::('e'::('q'::('u'::('e'::('s'::('t'::[]))))))), (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))), (ArrayVector.cons
+    (Pervasives.succ (Pervasives.succ 0))), (StackVector.cons
     (('R'::('e'::('p'::('l'::('y'::[]))))), (Pervasives.succ (Pervasives.succ
-    0)), (ArrayVector.cons
+    0)), (StackVector.cons
     (('R'::('A'::('R'::('P'::('R'::('e'::('q'::('u'::('e'::('s'::('t'::[]))))))))))),
-    (Pervasives.succ 0), (ArrayVector.cons
+    (Pervasives.succ 0), (StackVector.cons
     (('R'::('A'::('R'::('P'::('R'::('e'::('p'::('l'::('y'::[]))))))))), 0,
-    ArrayVector.empty ())))))))) { bindex =
+    StackVector.empty ())))))))) { bindex =
     ('R'::('A'::('R'::('P'::('R'::('e'::('q'::('u'::('e'::('s'::('t'::[])))))))))));
     indexb =
     ((fun _ n p -> n + p) (Pervasives.succ (Pervasives.succ 0))
@@ -8472,15 +10942,15 @@ let fiat_arp_operation_to_enum = function
       (Pervasives.succ 0))) }
 | RARPReply ->
   boundedIndex_inj_EnumType (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0))) (ArrayVector.cons
+    (Pervasives.succ 0))) (StackVector.cons
     (('R'::('e'::('q'::('u'::('e'::('s'::('t'::[]))))))), (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ 0))), (ArrayVector.cons
+    (Pervasives.succ (Pervasives.succ 0))), (StackVector.cons
     (('R'::('e'::('p'::('l'::('y'::[]))))), (Pervasives.succ (Pervasives.succ
-    0)), (ArrayVector.cons
+    0)), (StackVector.cons
     (('R'::('A'::('R'::('P'::('R'::('e'::('q'::('u'::('e'::('s'::('t'::[]))))))))))),
-    (Pervasives.succ 0), (ArrayVector.cons
+    (Pervasives.succ 0), (StackVector.cons
     (('R'::('A'::('R'::('P'::('R'::('e'::('p'::('l'::('y'::[]))))))))), 0,
-    ArrayVector.empty ())))))))) { bindex =
+    StackVector.empty ())))))))) { bindex =
     ('R'::('A'::('R'::('P'::('R'::('e'::('p'::('l'::('y'::[])))))))));
     indexb =
     ((fun _ n p -> n + p) (Pervasives.succ 0) (Pervasives.succ
@@ -8496,9 +10966,9 @@ type fiat_ipv4_protocol =
 
 let fiat_ipv4_protocol_of_enum proto =
   injectEnum (Pervasives.succ (Pervasives.succ (Pervasives.succ 0)))
-    (ArrayVector.cons (ICMP, (Pervasives.succ (Pervasives.succ 0)),
-    (ArrayVector.cons (TCP, (Pervasives.succ 0), (ArrayVector.cons (UDP, 0,
-    ArrayVector.empty ())))))) proto
+    (StackVector.cons (ICMP, (Pervasives.succ (Pervasives.succ 0)),
+    (StackVector.cons (TCP, (Pervasives.succ 0), (StackVector.cons (UDP, 0,
+    StackVector.empty ())))))) proto
 
 (** val fiat_ipv4_protocol_to_enum :
     fiat_ipv4_protocol -> char list enumType **)
@@ -8506,54 +10976,26 @@ let fiat_ipv4_protocol_of_enum proto =
 let fiat_ipv4_protocol_to_enum = function
 | ICMP ->
   boundedIndex_inj_EnumType (Pervasives.succ (Pervasives.succ 0))
-    (ArrayVector.cons (('I'::('C'::('M'::('P'::[])))), (Pervasives.succ
-    (Pervasives.succ 0)), (ArrayVector.cons (('T'::('C'::('P'::[]))),
-    (Pervasives.succ 0), (ArrayVector.cons (('U'::('D'::('P'::[]))), 0,
-    ArrayVector.empty ())))))) { bindex = ('I'::('C'::('M'::('P'::[]))));
+    (StackVector.cons (('I'::('C'::('M'::('P'::[])))), (Pervasives.succ
+    (Pervasives.succ 0)), (StackVector.cons (('T'::('C'::('P'::[]))),
+    (Pervasives.succ 0), (StackVector.cons (('U'::('D'::('P'::[]))), 0,
+    StackVector.empty ())))))) { bindex = ('I'::('C'::('M'::('P'::[]))));
     indexb =
     ((fun _ n p -> n + p) (Pervasives.succ (Pervasives.succ (Pervasives.succ
       0))) 0 (ArrayVector.zero (Pervasives.succ (Pervasives.succ 0)))) }
 | TCP ->
   boundedIndex_inj_EnumType (Pervasives.succ (Pervasives.succ 0))
-    (ArrayVector.cons (('I'::('C'::('M'::('P'::[])))), (Pervasives.succ
-    (Pervasives.succ 0)), (ArrayVector.cons (('T'::('C'::('P'::[]))),
-    (Pervasives.succ 0), (ArrayVector.cons (('U'::('D'::('P'::[]))), 0,
-    ArrayVector.empty ())))))) { bindex = ('T'::('C'::('P'::[]))); indexb =
+    (StackVector.cons (('I'::('C'::('M'::('P'::[])))), (Pervasives.succ
+    (Pervasives.succ 0)), (StackVector.cons (('T'::('C'::('P'::[]))),
+    (Pervasives.succ 0), (StackVector.cons (('U'::('D'::('P'::[]))), 0,
+    StackVector.empty ())))))) { bindex = ('T'::('C'::('P'::[]))); indexb =
     ((fun _ n p -> n + p) (Pervasives.succ (Pervasives.succ 0))
       (Pervasives.succ 0) (ArrayVector.zero (Pervasives.succ 0))) }
 | UDP ->
   boundedIndex_inj_EnumType (Pervasives.succ (Pervasives.succ 0))
-    (ArrayVector.cons (('I'::('C'::('M'::('P'::[])))), (Pervasives.succ
-    (Pervasives.succ 0)), (ArrayVector.cons (('T'::('C'::('P'::[]))),
-    (Pervasives.succ 0), (ArrayVector.cons (('U'::('D'::('P'::[]))), 0,
-    ArrayVector.empty ())))))) { bindex = ('U'::('D'::('P'::[]))); indexb =
+    (StackVector.cons (('I'::('C'::('M'::('P'::[])))), (Pervasives.succ
+    (Pervasives.succ 0)), (StackVector.cons (('T'::('C'::('P'::[]))),
+    (Pervasives.succ 0), (StackVector.cons (('U'::('D'::('P'::[]))), 0,
+    StackVector.empty ())))))) { bindex = ('U'::('D'::('P'::[]))); indexb =
     ((fun _ n p -> n + p) (Pervasives.succ 0) (Pervasives.succ
       (Pervasives.succ 0)) (ArrayVector.zero 0)) }
-
-(** val fiat_ipv4_decode_bench : unit -> iPv4_Packet option **)
-
-let fiat_ipv4_decode_bench _ =
-  fiat_ipv4_decode (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))))))))))))))))))))))) bin_pkt
-
-(** val fiat_ipv4_encode_bench :
-    unit -> Int64Word.t ArrayVector.storage_t option **)
-
-let fiat_ipv4_encode_bench _ =
-  fiat_ipv4_encode (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-    (Pervasives.succ 0)))))))))))))))))))) pkt
-    (makeBuffer (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ (Pervasives.succ (Pervasives.succ (Pervasives.succ
-      (Pervasives.succ 0)))))))))))))))))))))

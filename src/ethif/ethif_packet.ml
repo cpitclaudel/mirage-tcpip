@@ -48,8 +48,8 @@ module Unmarshal = struct
     match fiat_ethernet_decode frame sizeof_ethernet with
     | Some pkt ->
        let payload = Cstruct.shift frame sizeof_ethernet in
-       let source = Macaddr.of_bytes_exn (FiatUtils.bytes_of_bytestring pkt.source) in
-       let destination = Macaddr.of_bytes_exn (FiatUtils.bytes_of_bytestring pkt.destination) in
+       let source = Macaddr.of_bytes_exn (FiatUtils.bytes_of_stackvector pkt.source) in
+       let destination = Macaddr.of_bytes_exn (FiatUtils.bytes_of_stackvector pkt.destination) in
        let ethertype = ethertype_of_fiat_type (Fiat4Mirage.fiat_ethernet_type_of_enum pkt.ethType) in
        Result.Ok ({ destination; source; ethertype }, payload)
     | None ->
@@ -88,8 +88,8 @@ module Marshal = struct
 
   let fill_fiat (t: t) buf =
     let fiat_pkt = Fiat4Mirage.{
-          source = FiatUtils.bytestring_of_bytes (Macaddr.to_bytes t.source);
-          destination = FiatUtils.bytestring_of_bytes (Macaddr.to_bytes t.destination);
+          source = FiatUtils.stackvector_of_bytes (Macaddr.to_bytes t.source);
+          destination = FiatUtils.stackvector_of_bytes (Macaddr.to_bytes t.destination);
           ethType = fiat_ethernet_type_to_enum (ethertype_to_fiat_type t.ethertype)
                    } in
     fiat_ethernet_encode fiat_pkt buf sizeof_ethernet sizeof_ethernet
