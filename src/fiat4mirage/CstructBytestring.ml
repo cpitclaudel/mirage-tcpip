@@ -125,6 +125,7 @@ let checksum_bound n _ (arr: storage_t) =
    * compare_chksum "aabbcc";
    * compare_chksum "aabbccd";
    * checksum_bound' n arr *)
+  throw_if_stale "checksum_bound" arr;
   Int64Word.of_int (0xffff - !checksum (Cstruct.set_len (to_cstruct arr) (min n (length arr))))
 
 let slice_range _ (from: int) (len: int) (arr: storage_t) =

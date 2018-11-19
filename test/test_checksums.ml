@@ -100,7 +100,7 @@ let udp_ipv4_zero_checksum () =
       Udp_packet.Marshal.make_cstruct ~src:(Ipaddr.V4 src) ~dst:(Ipaddr.V4 dst) ~pseudoheader ~payload
         { src_port = 42; dst_port = 42 };
       payload] in
-  let (ipv4_header', transport_packet) = unwrap_ipv4 packet in
+  let (_ipv4_header', transport_packet) = unwrap_ipv4 packet in
 
   Alcotest.(check bool) "UDP packets with zero checksums pass verification"
     true @@ verify_ipv4_udp ~ipv4_header ~transport_packet;
