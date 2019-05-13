@@ -104,7 +104,7 @@ module Marshal = struct
 
   let fill ~payload_len t buf =
     if !FiatUtils.ipv4_encoding_uses_fiat then fill_fiat ~payload_len t buf
-    else Result.Ok (unsafe_fill_mirage ~payload_len t buf)
+    else Ok (unsafe_fill_mirage ~payload_len t buf)
 
   let into_cstruct ~payload_len t buf =
     if Cstruct.len buf < (sizeof_ipv4 + Cstruct.len t.options) then
@@ -195,7 +195,7 @@ module Unmarshal = struct
     match fiat_ipv4_decode buf with
     | None ->
        let fmt = Printf.sprintf "Fiat parsing failed; packet was %s\n" in
-       Result.Error (fmt (FiatUtils.cstruct_to_debug_string buf))
+       Error (fmt (FiatUtils.cstruct_to_debug_string buf))
     | Some (header: Fiat4Mirage.iPv4_Packet) ->
        let header_len = 4 * (Fiat4Mirage.iPv4_Packet_Header_Len header) in
        let buf_from_fiat_options opts =
@@ -212,7 +212,7 @@ module Unmarshal = struct
         * Printf.printf "SRC: %s\nDST: %s\n"
         *   (Int64Word.bits header.sourceAddress)
         *   (Int64Word.bits header.destAddress); *)
-       Result.Ok ({src = Ipaddr.V4.of_int32 (Int64Word.to_uint32 header.sourceAddress);
+       Ok ({src = Ipaddr.V4.of_int32 (Int64Word.to_uint32 header.sourceAddress);
                    dst = Ipaddr.V4.of_int32 (Int64Word.to_uint32 header.destAddress);
                    proto = Marshal.protocol_to_int (fiat_protocol_to_protocol proto);
                    ttl = Int64Word.to_int header.tTL; options; },

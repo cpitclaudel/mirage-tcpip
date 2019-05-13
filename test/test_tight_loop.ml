@@ -1,6 +1,6 @@
 let check_result r =
   match r with
-  | Result.Ok x -> x
+  | Ok x -> x
   | _ -> failwith "Failed"
 
 let must o =

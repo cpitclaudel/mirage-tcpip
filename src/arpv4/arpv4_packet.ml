@@ -86,19 +86,19 @@ module Unmarshal = struct
          let src_mac = FiatUtils.string_of_char_int64ws pkt.senderHardAddress in
          let target_mac = FiatUtils.string_of_char_int64ws pkt.targetHardAddress in
          (match (Macaddr.of_bytes src_mac, Macaddr.of_bytes target_mac) with
-          | None, None   -> Result.Error (Bad_mac [ src_mac ; target_mac ])
-          | None, Some _ -> Result.Error (Bad_mac [ src_mac ])
-          | Some _, None -> Result.Error (Bad_mac [ target_mac ])
+          | None, None   -> Error (Bad_mac [ src_mac ; target_mac ])
+          | None, Some _ -> Error (Bad_mac [ src_mac ])
+          | Some _, None -> Error (Bad_mac [ target_mac ])
           | Some src_mac, Some target_mac ->
              let src_ip = Ipaddr.V4.of_int32 (FiatUtils.uint32_of_char_int64ws pkt.senderProtAddress) in
              let target_ip = Ipaddr.V4.of_int32 (FiatUtils.uint32_of_char_int64ws pkt.targetProtAddress) in
              let op = op_of_fiat_operation (Fiat4Mirage.fiat_arp_operation_of_enum pkt.operation) in
-             Result.Ok { op; sha = src_mac; spa = src_ip;
+             Ok { op; sha = src_mac; spa = src_ip;
                          tha = target_mac; tpa = target_ip })
       | None ->
-         Result.Error (FiatError (Printf.sprintf "Fiat parsing failed; packet was %s\n" (FiatUtils.cstruct_to_debug_string buf)))
+         Error (FiatError (Printf.sprintf "Fiat parsing failed; packet was %s\n" (FiatUtils.cstruct_to_debug_string buf)))
     with FiatUtils.Unsupported_by_mirage ->
-      Result.Error (FiatError (Printf.sprintf "ARP packet unsupported by mirage; packet was %s\n" (FiatUtils.cstruct_to_debug_string buf)))
+      Error (FiatError (Printf.sprintf "ARP packet unsupported by mirage; packet was %s\n" (FiatUtils.cstruct_to_debug_string buf)))
 
   let of_cstruct =
     if !FiatUtils.arpv4_decoding_uses_fiat then of_cstruct_fiat
@@ -154,7 +154,7 @@ module Marshal = struct
 
   let fill t buf =
     if !FiatUtils.arpv4_encoding_uses_fiat then fill_fiat t buf
-    else (unsafe_fill_mirage t buf; Result.Ok ())
+    else (unsafe_fill_mirage t buf; Ok ())
 
   let into_cstruct t buf =
     let open Rresult in

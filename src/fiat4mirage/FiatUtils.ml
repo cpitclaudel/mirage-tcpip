@@ -198,7 +198,7 @@ exception Unsupported_by_mirage
 let make_encoder (encoder: int -> 'a -> bytestring -> bytestring option) =
   fun (pkt: 'a) (cstruct: Cstruct.t) full_len blit_len ->
   if blit_len > Cstruct.len cstruct then
-    Result.Error "Not enough space"
+    Error "Not enough space"
   else
     let needs_blit = full_len <> blit_len in
     let fiat_cstruct = if needs_blit then Cstruct.create full_len else cstruct in
@@ -206,8 +206,8 @@ let make_encoder (encoder: int -> 'a -> bytestring -> bytestring option) =
     | Some bytestring ->
        if needs_blit then
          cstruct_blit_from_bytestring bytestring 0 cstruct 0 blit_len;
-       Result.Ok ()
-    | None -> Result.Error "Fiat encoding failed"
+       Ok ()
+    | None -> Error "Fiat encoding failed"
 
 let make_decoder (decoder: int -> bytestring -> 'a) =
   fun cstruct -> decoder (Cstruct.len cstruct) (bytestring_of_cstruct cstruct)

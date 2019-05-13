@@ -92,14 +92,14 @@ module Unmarshal = struct
        let src_port = Int64Word.to_int pkt.sourcePort in
        let dst_port = Int64Word.to_int pkt.destPort in
        Options.unmarshal (FiatUtils.cstruct_of_uint32_int64ws pkt.options0) >>= fun options ->
-       Result.Ok ({ urg; ack; psh; rst; syn; fin; window; options;
+       Ok ({ urg; ack; psh; rst; syn; fin; window; options;
                     sequence; ack_number; src_port; dst_port },
                   FiatUtils.cstruct_of_payload pkt.payload)
     | None ->
-       Result.Error (Printf.sprintf "Fiat parsing failed; packet was %s\n"
+       Error (Printf.sprintf "Fiat parsing failed; packet was %s\n"
                        (FiatUtils.cstruct_to_debug_string buf))
     | exception FiatUtils.Fiat_no_ipv6 msg ->
-       Result.Error msg
+       Error msg
 
   let of_cstruct =
     if !FiatUtils.tcp_decoding_uses_fiat then of_cstruct_fiat
@@ -202,7 +202,7 @@ module Marshal = struct
       (FiatUtils.ipv4_to_bytestring dst)
       (Int64Word.of_int total_len)
       fiat_pkt buf total_len header_len >>= fun () ->
-    Result.Ok header_len
+    Ok header_len
 
   let into_cstruct ~(src: Ipaddr.t) ~(dst: Ipaddr.t) ~pseudoheader ~payload t buf =
     if !FiatUtils.tcp_encoding_uses_fiat then

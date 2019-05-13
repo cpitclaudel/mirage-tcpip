@@ -54,11 +54,11 @@ module Unmarshal = struct
     | Some (pkt: Fiat4Mirage.uDP_Packet) ->
        let src_port = Int64Word.to_int pkt.sourcePort0 in
        let dst_port = Int64Word.to_int pkt.destPort0 in
-       Result.Ok ({ src_port; dst_port }, FiatUtils.cstruct_of_payload pkt.payload0)
+       Ok ({ src_port; dst_port }, FiatUtils.cstruct_of_payload pkt.payload0)
     | None ->
-       Result.Error (Printf.sprintf "Fiat parsing failed; packet was %s\n" (FiatUtils.cstruct_to_debug_string buf))
+       Error (Printf.sprintf "Fiat parsing failed; packet was %s\n" (FiatUtils.cstruct_to_debug_string buf))
     | exception FiatUtils.Fiat_no_ipv6 msg ->
-       Result.Error msg
+       Error msg
 
   let of_cstruct =
     if !FiatUtils.udp_decoding_uses_fiat then of_cstruct_fiat

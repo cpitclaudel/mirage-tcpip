@@ -51,12 +51,12 @@ module Unmarshal = struct
        let source = Macaddr.of_bytes_exn (FiatUtils.bytes_of_stackvector pkt.source) in
        let destination = Macaddr.of_bytes_exn (FiatUtils.bytes_of_stackvector pkt.destination) in
        let ethertype = ethertype_of_fiat_type (Fiat4Mirage.fiat_ethernet_type_of_enum pkt.ethType) in
-       Result.Ok ({ destination; source; ethertype }, payload)
+       Ok ({ destination; source; ethertype }, payload)
     | None ->
-       Result.Error (Printf.sprintf "Fiat parsing failed; packet was %s\n"
+       Error (Printf.sprintf "Fiat parsing failed; packet was %s\n"
                        (FiatUtils.cstruct_to_debug_string frame))
     | exception FiatUtils.Unsupported_by_mirage ->
-       Result.Error (Printf.sprintf "Ethernet packet unsupported by mirage; packet was %s\n"
+       Error (Printf.sprintf "Ethernet packet unsupported by mirage; packet was %s\n"
                        (FiatUtils.cstruct_to_debug_string frame))
 
   let of_cstruct =
@@ -96,7 +96,7 @@ module Marshal = struct
 
   let fill t buf =
     if !FiatUtils.ethif_encoding_uses_fiat then fill_fiat t buf
-    else (check_len buf >>= fun () -> Result.Ok (unsafe_fill t buf))
+    else (check_len buf >>= fun () -> Ok (unsafe_fill t buf))
 
   let into_cstruct t buf =
     fill t buf
