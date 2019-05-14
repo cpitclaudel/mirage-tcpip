@@ -197,7 +197,7 @@ module Unmarshal = struct
        let fmt = Printf.sprintf "Fiat parsing failed; packet was %s\n" in
        Error (fmt (FiatUtils.cstruct_to_debug_string buf))
     | Some (header: Fiat4Mirage.iPv4_Packet) ->
-       let header_len = 4 * (Fiat4Mirage.iPv4_Packet_Header_Len header) in
+       let header_len = 4 * (5 + List.length header.options) in
        let buf_from_fiat_options opts =
          (* Mirage expects raw options, but Fiat decodes them *)
          let optbuf = Cstruct.create (4 * (List.length opts)) in
